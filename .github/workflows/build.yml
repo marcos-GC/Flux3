@@ -1,0 +1,48 @@
+name: Compilar y probar (macOS)
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Versión de Swift y Xcode
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Compilar
+        run: swift build
+
+      - name: Tests
+        run: swift test
+
+      - name: Montar la app (.app)
+        run: INSTALL_DIR="$RUNNER_TEMP/apps" ./build_app.sh --no-open
+
+      - name: Comprobar que la app arranca
+        run: |
+          "$RUNNER_TEMP/apps/FLUX Studio.app/Contents/MacOS/FluxStudio" &
+          PID=$!
+          sleep 8
+          if kill -0 $PID 2>/dev/null; then
+            echo "La app sigue abierta tras 8 s: arranca bien."
+            kill $PID
+          else
+            wait $PID; echo "La app se ha cerrado sola (código $?)"; exit 1
+          fi
+
+      - name: Empaquetar
+        run: cd "$RUNNER_TEMP/apps" && ditto -c -k --keepParent "FLUX Studio.app" "$GITHUB_WORKSPACE/FLUX-Studio.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FLUX-Studio
+          path: FLUX-Studio.zip
+          retention-days: 14
