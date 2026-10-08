@@ -143,6 +143,11 @@ final class PreciseEditModel: ObservableObject {
         addRegion(CGRect(x: 0.35 + offset, y: 0.35 + offset, width: 0.3, height: 0.3))
     }
 
+    func clearRegions() {
+        regions.removeAll()
+        selectedRegionID = nil
+    }
+
     func removeRegion(_ id: UUID) {
         regions.removeAll { $0.id == id }
         if selectedRegionID == id { selectedRegionID = nil }

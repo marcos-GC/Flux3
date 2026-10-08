@@ -58,7 +58,9 @@ struct EditCanvas: View {
                     }
 
                     ZoomControls(fitScale: layout.fitScale)
-                        .offset(x: 20, y: geo.size.height - 196)
+                        .fixedSize()
+                        .frame(width: geo.size.width - 20, alignment: .trailing)
+                        .offset(y: 18)
                 }
                 .coordinateSpace(name: "canvas")
                 .clipped()
@@ -86,6 +88,7 @@ struct EditCanvas: View {
                 label: "\(index + 1)",
                 caption: region.kind == .new ? "Nuevo: \(region.displayText)" : region.displayText,
                 style: region.kind == .anchor ? .anchor : .primary,
+                color: Theme.regionColor(index, kind: region.kind),
                 selected: selected
             ) { model.selectedRegionID = region.id }
 
@@ -96,6 +99,7 @@ struct EditCanvas: View {
                     label: "\(index + 1)→",
                     caption: "Destino",
                     style: .target,
+                    color: Theme.regionColor(index),
                     selected: selected
                 ) { model.selectedRegionID = region.id }
             }
@@ -255,6 +259,7 @@ struct BoxEditor: View {
     let label: String
     let caption: String
     let style: Style
+    var color: Color = Theme.region
     let selected: Bool
     let onSelect: () -> Void
 
@@ -262,9 +267,9 @@ struct BoxEditor: View {
 
     private var tint: Color {
         switch style {
-        case .primary: return Theme.region
-        case .target: return Theme.region.opacity(0.75)
-        case .anchor: return Color(hex: 0x3F9D6B)
+        case .primary: return color
+        case .target: return color.opacity(0.75)
+        case .anchor: return Theme.anchorColor
         }
     }
 

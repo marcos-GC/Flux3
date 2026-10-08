@@ -1,3 +1,4 @@
+import FluxCore
 import SwiftUI
 
 extension Color {
@@ -24,8 +25,44 @@ enum Theme {
     static let placeholder = Color(hex: 0xE2E2E2)
     static let danger = Color(hex: 0xC2410C)
 
+    /// Un color por región, como en la herramienta oficial (1 violeta, 2 azul…).
+    static let regionPalette: [Color] = [
+        Color(hex: 0x8B7CF6), Color(hex: 0x4F8EF7), Color(hex: 0x22A699), Color(hex: 0xE0962F),
+        Color(hex: 0xE0559A), Color(hex: 0x6B7FD7), Color(hex: 0xB0703A), Color(hex: 0x7A9B2F),
+    ]
+    static let anchorColor = Color(hex: 0x3F9D6B)
+
+    static func regionColor(_ index: Int, kind: RegionKind = .edit) -> Color {
+        kind == .anchor ? anchorColor : regionPalette[index % regionPalette.count]
+    }
+
     static let cornerResult: CGFloat = 12
     static let cornerPromptBar: CGFloat = 28
+}
+
+/// Botón de texto en mayúsculas con tracking (barra superior estilo FLUX Tools).
+struct ToolTextButton: View {
+    let icon: String
+    let title: String
+    var isActive = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: icon).font(.system(size: 12))
+                Text(title.uppercased())
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .tracking(1)
+            }
+            .foregroundStyle(Theme.textPrimary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(RoundedRectangle(cornerRadius: 8).fill(isActive ? Theme.border.opacity(0.6) : .clear))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
 }
 
 /// Etiqueta pequeña en mayúsculas con tracking (estilo FLUX Tools).

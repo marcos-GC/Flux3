@@ -20,7 +20,7 @@ struct PreciseEditBar: View {
                                         .font(.system(size: 10, weight: .bold))
                                         .foregroundStyle(.white)
                                         .frame(width: 16, height: 16)
-                                        .background(Circle().fill(region.kind == .anchor ? Color(hex: 0x3F9D6B) : Theme.region))
+                                        .background(Circle().fill(Theme.regionColor(index, kind: region.kind)))
                                     Text(region.displayText)
                                         .font(.system(size: 12))
                                         .lineLimit(1)
@@ -31,7 +31,7 @@ struct PreciseEditBar: View {
                                 }
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 5)
-                                .background(Capsule().fill(model.selectedRegionID == region.id ? Theme.region.opacity(0.14) : Color.white.opacity(0.7)))
+                                .background(Capsule().fill(model.selectedRegionID == region.id ? Theme.regionColor(index, kind: region.kind).opacity(0.16) : Color.white.opacity(0.7)))
                                 .overlay(Capsule().strokeBorder(Theme.border))
                                 .foregroundStyle(Theme.textPrimary)
                             }
@@ -82,9 +82,9 @@ struct PreciseEditBar: View {
                     .frame(width: 320)
                 }
 
-                Button { showPrompt = true } label: {
+                Button { showPrompt.toggle() } label: {
                     Chip(icon: "text.alignleft", text: model.manualPrompt == nil ? "Ver prompt" : "Ver prompt (editado)",
-                         isActive: model.manualPrompt != nil)
+                         isActive: showPrompt || model.manualPrompt != nil)
                 }
                 .buttonStyle(.plain)
 
@@ -156,97 +156,111 @@ private struct ExtraReferenceChip: View {
     }
 }
 
-/// "Ver prompt": Resumen y Prompt del modelo (editable).
-struct PromptPreviewSheet: View {
+/// Panel "Ver prompt" encima de la barra: Resumen y Prompt del modelo (editable).
+struct PromptPanel: View {
     @EnvironmentObject private var model: PreciseEditModel
-    @Environment(\.dismiss) private var dismiss
     @State private var tab = 0
-    @State private var draft = ""
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Picker("", selection: $tab) {
-                    Text("Resumen").tag(0)
-                    Text("Prompt del modelo").tag(1)
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(width: 300)
-                Spacer()
-                Button("Cerrar") { save(); dismiss() }.keyboardShortcut(.cancelAction)
-            }
-
-            if tab == 0 {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 12) {
-                        SectionLabel("Cambio en toda la imagen")
-                        Text(model.globalInstruction.isEmpty ? "—" : model.globalInstruction)
-                            .font(.system(size: 13))
-                        SectionLabel("Regiones").padding(.top, 6)
-                        if model.regions.isEmpty {
-                            Text("No hay regiones.").foregroundStyle(Theme.textSecondary)
-                        }
-                        let specs = model.specs
-                        ForEach(Array(model.regions.enumerated()), id: \.element.id) { index, region in
-                            let spec = specs[index]
-                            let src = spec.source.map { PreciseEdit.bbox($0, imageWidth: size.width, imageHeight: size.height) }
-                            let tgt = spec.target.map { PreciseEdit.bbox($0, imageWidth: size.width, imageHeight: size.height) }
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text("\(spec.number). \(region.kind.spanishName) — \(region.displayText)")
-                                    .font(.system(size: 13, weight: .medium))
-                                Text([src.map { "origen \($0)" }, tgt.map { "destino \($0)" }, region.reference.map { _ in "con imagen de referencia" }]
-                                    .compactMap { $0 }.joined(separator: " · "))
-                                    .font(.system(size: 11, design: .monospaced))
-                                    .foregroundStyle(Theme.textSecondary)
-                                if !spec.isUsable {
-                                    Text("No se enviará: falta la instrucción.")
-                                        .font(.system(size: 11))
-                                        .foregroundStyle(Theme.danger)
-                                }
-                            }
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            } else {
-                Text("Este es el texto exacto que se enviará. Puedes editarlo a mano antes de generar.")
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                tabButton("Resumen", 0)
+                tabButton("Prompt del modelo", 1)
+                Image(systemName: "info.circle")
                     .font(.system(size: 12))
                     .foregroundStyle(Theme.textSecondary)
-                TextEditor(text: $draft)
-                    .font(.system(size: 12, design: .monospaced))
-                    .scrollContentBackground(.hidden)
-                    .padding(8)
-                    .background(RoundedRectangle(cornerRadius: 10).fill(Color.white))
-                    .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.border))
-                HStack {
-                    Button("Copiar") { copyText(draft) }
-                    if model.manualPrompt != nil || draft != model.automaticPrompt {
-                        Button("Volver al automático") {
-                            model.manualPrompt = nil
-                            draft = model.automaticPrompt
-                        }
-                    }
-                    Spacer()
+                    .help("El prompt del modelo es el texto exacto que se envía. Puedes editarlo a mano.")
+                Spacer()
+                if tab == 1 {
                     if model.manualPrompt != nil {
-                        Label("Editado a mano: ya no se actualiza al cambiar las regiones", systemImage: "pencil")
-                            .font(.system(size: 11))
-                            .foregroundStyle(Theme.danger)
+                        Text("Editado a mano").font(.system(size: 11)).foregroundStyle(Theme.danger)
+                        Button("Volver al automático") { model.manualPrompt = nil }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 11, weight: .medium))
+                    }
+                    Button("Copiar") { copyText(model.effectivePrompt) }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 11, weight: .medium))
+                }
+            }
+
+            Group {
+                if tab == 0 { summary } else { editor }
+            }
+            .frame(height: 150)
+            .padding(10)
+            .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.75)))
+            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.border))
+        }
+        .padding(14)
+        .frame(maxWidth: 820)
+        .surfaceStyle(cornerRadius: 18)
+        .padding(.horizontal, 40)
+    }
+
+    private func tabButton(_ title: String, _ index: Int) -> some View {
+        Button { tab = index } label: {
+            Text(title.uppercased())
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .tracking(1)
+                .foregroundStyle(tab == index ? Theme.textPrimary : Theme.textSecondary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .overlay(Capsule().strokeBorder(tab == index ? Theme.textPrimary : Theme.border))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var summary: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 10) {
+                    pill(Text("TODA LA IMAGEN"))
+                    Text(model.globalInstruction.isEmpty ? "Sin cambio para toda la imagen" : model.globalInstruction)
+                        .font(.system(size: 13))
+                        .foregroundStyle(model.globalInstruction.isEmpty ? Theme.textSecondary : Theme.textPrimary)
+                }
+                let specs = model.specs
+                ForEach(Array(model.regions.enumerated()), id: \.element.id) { index, region in
+                    HStack(spacing: 10) {
+                        pill(HStack(spacing: 5) {
+                            Text("\(index + 1)")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(.white)
+                                .frame(width: 16, height: 16)
+                                .background(Circle().fill(Theme.regionColor(index, kind: region.kind)))
+                            Text(region.kind == .edit ? "REGIÓN" : region.kind.spanishName.uppercased())
+                        })
+                        Text(region.displayText).font(.system(size: 13))
+                        if region.reference != nil {
+                            Image(systemName: "photo").font(.system(size: 11)).foregroundStyle(Theme.textSecondary)
+                        }
+                        if !specs[index].isUsable {
+                            Text("no se enviará").font(.system(size: 11)).foregroundStyle(Theme.danger)
+                        }
                     }
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(20)
-        .frame(width: 720, height: 520)
-        .background(Theme.background)
-        .preferredColorScheme(.light)
-        .onAppear { draft = model.effectivePrompt }
-        .onDisappear(perform: save)
     }
 
-    private var size: CGSize { model.current?.pixelSize ?? CGSize(width: 1000, height: 1000) }
+    private func pill<Content: View>(_ content: Content) -> some View {
+        content
+            .font(.system(size: 10, weight: .medium, design: .monospaced))
+            .tracking(1)
+            .foregroundStyle(Theme.textSecondary)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .overlay(Capsule().strokeBorder(Theme.border))
+    }
 
-    private func save() {
-        model.manualPrompt = draft == model.automaticPrompt ? nil : draft
+    private var editor: some View {
+        TextEditor(text: Binding(
+            get: { model.effectivePrompt },
+            set: { model.manualPrompt = $0 == model.automaticPrompt ? nil : $0 }
+        ))
+        .font(.system(size: 12, design: .monospaced))
+        .scrollContentBackground(.hidden)
     }
 }

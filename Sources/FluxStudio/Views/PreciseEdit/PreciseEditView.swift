@@ -20,6 +20,11 @@ struct PreciseEditView: View {
                         EditToolbar(showPrompt: $showPrompt, confirmReset: $confirmReset)
                             .padding(.top, 18)
                         Spacer()
+                        if showPrompt {
+                            PromptPanel()
+                                .padding(.bottom, 8)
+                                .transition(.move(edge: .bottom).combined(with: .opacity))
+                        }
                         PreciseEditBar(showPrompt: $showPrompt)
                             .padding(.bottom, 22)
                     }
@@ -28,10 +33,7 @@ struct PreciseEditView: View {
         }
         .onAppear(perform: takeHandoff)
         .onChange(of: state.handoff) { takeHandoff() }
-        .sheet(isPresented: $showPrompt) {
-            PromptPreviewSheet()
-                .environmentObject(model)
-        }
+        .animation(.easeOut(duration: 0.18), value: showPrompt)
         .confirmationDialog("¿Empezar de nuevo?", isPresented: $confirmReset) {
             Button("Empezar de nuevo", role: .destructive) { model.reset() }
         } message: {
@@ -181,22 +183,23 @@ private struct EditToolbar: View {
     @Binding var confirmReset: Bool
 
     var body: some View {
-        HStack(spacing: 4) {
-            toolButton("plus.square.dashed", "Añadir región") { model.addDefaultRegion() }
+        HStack(spacing: 2) {
+            ToolTextButton(icon: "plus.square", title: "Añadir región") { model.addDefaultRegion() }
                 .disabled(model.compareMode)
-            toolButton(model.showRegions ? "eye" : "eye.slash",
-                       model.showRegions ? "Ocultar regiones" : "Mostrar regiones") { model.showRegions.toggle() }
-            toolButton("arrow.down.to.line", "Descargar esta versión") { download() }
-            toolButton("arrow.counterclockwise", "Empezar de nuevo") { confirmReset = true }
-
+            ToolTextButton(icon: "square.dashed", title: model.showRegions ? "Ocultar regiones" : "Mostrar regiones",
+                           isActive: !model.showRegions) { model.showRegions.toggle() }
+            ToolTextButton(icon: "xmark.square", title: "Borrar todas") { model.clearRegions() }
+                .disabled(model.regions.isEmpty)
             divider
+            ToolTextButton(icon: "arrow.down.to.line", title: "Descargar") { download() }
+            ToolTextButton(icon: "arrow.counterclockwise", title: "Empezar de nuevo") { confirmReset = true }
 
-            Button { model.compareMode.toggle() } label: {
-                Chip(icon: "rectangle.split.2x1", text: "Antes / Después", isActive: model.compareMode)
+            if model.parentOfCurrent != nil {
+                divider
+                ToolTextButton(icon: "rectangle.split.2x1", title: "Antes / Después", isActive: model.compareMode) {
+                    model.compareMode.toggle()
+                }
             }
-            .buttonStyle(.plain)
-            .disabled(model.parentOfCurrent == nil)
-            .help(model.parentOfCurrent == nil ? "Disponible cuando haya un resultado" : "Comparar con la versión anterior")
 
             if model.versions.count > 1 {
                 divider
@@ -210,35 +213,25 @@ private struct EditToolbar: View {
                         }
                     }
                 } label: {
-                    Text(model.currentIndex == 0 ? "Original" : "Versión \(model.currentIndex + 1) de \(model.versions.count)")
-                        .font(.system(size: 12, weight: .medium))
+                    Text(model.currentIndex == 0 ? "ORIGINAL" : "VERSIÓN \(model.currentIndex + 1)/\(model.versions.count)")
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .tracking(1)
                 }
                 .menuStyle(.borderlessButton)
                 .fixedSize()
                 Button { model.goToVersion(model.currentIndex + 1) } label: { Image(systemName: "chevron.right") }
                     .buttonStyle(.plain)
                     .disabled(model.currentIndex >= model.versions.count - 1)
+                    .padding(.trailing, 6)
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .surfaceStyle(cornerRadius: 22)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 5)
+        .surfaceStyle(cornerRadius: 14)
     }
 
     private var divider: some View {
         Rectangle().fill(Theme.border).frame(width: 1, height: 20).padding(.horizontal, 6)
-    }
-
-    private func toolButton(_ icon: String, _ help: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: icon)
-                .font(.system(size: 14))
-                .foregroundStyle(Theme.textPrimary)
-                .frame(width: 32, height: 30)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help(help)
     }
 
     private func download() {

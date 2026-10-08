@@ -21,7 +21,10 @@ struct RegionInspector: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(Theme.regionColor(number - 1, kind: region.kind))
+                    .frame(width: 10, height: 10)
                 SectionLabel("Región \(number)")
                 Spacer()
                 Button { model.selectedRegionID = nil } label: {
