@@ -124,6 +124,17 @@ final class PreciseEditModel: ObservableObject {
         }
     }
 
+    /// Muestra la imagen seleccionada en el Estudio: si es una versión ya conocida
+    /// se conserva el trabajo (regiones); si es otra imagen, empieza de cero con ella.
+    func sync(with url: URL?) {
+        guard let url else { return }
+        if let index = versions.firstIndex(where: { $0.fileURL == url }) {
+            if index != currentIndex { goToVersion(index) }
+        } else if !isGenerating {
+            load(url)
+        }
+    }
+
     func goToVersion(_ index: Int) {
         guard versions.indices.contains(index) else { return }
         currentIndex = index
@@ -342,7 +353,8 @@ final class PreciseEditModel: ObservableObject {
                                     client: client, endpoint: .flux3Image, body: body,
                                     modelName: "Editar con precisión", prefix: "precise-edit", index: index,
                                     prompt: summaryText, sentPrompt: prompt, parameters: parameters,
-                                    referenceCount: regionRefs.count + extraRefs.count
+                                    referenceCount: regionRefs.count + extraRefs.count,
+                                    source: sourceURL
                                 ) { [weak self] phase, _, _ in
                                     self?.statusText = Self.describe(phase)
                                 })

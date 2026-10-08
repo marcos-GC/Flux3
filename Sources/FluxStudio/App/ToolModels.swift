@@ -41,7 +41,8 @@ final class ToolRunner: ObservableObject {
     }
 
     func run<Body: Encodable & Sendable>(
-        state: AppState, endpoint: BFLEndpoint, modelName: String, prompt: String, body: Body, referenceCount: Int = 0
+        state: AppState, endpoint: BFLEndpoint, modelName: String, prompt: String, body: Body,
+        referenceCount: Int = 0, source: URL? = nil
     ) {
         guard !isRunning else { return }
         let client: BFLClient
@@ -59,7 +60,7 @@ final class ToolRunner: ObservableObject {
                 let output = try await state.runJob(
                     client: client, endpoint: endpoint, body: body, modelName: modelName,
                     prefix: endpoint.filePrefix, index: 0, prompt: prompt, sentPrompt: prompt,
-                    parameters: parameters, referenceCount: referenceCount
+                    parameters: parameters, referenceCount: referenceCount, source: source
                 ) { [weak self] phase, _, _ in
                     self?.status = PreciseEditModel.describe(phase)
                 }
@@ -133,9 +134,9 @@ class BaseToolModel: ObservableObject {
         loadError = nil
     }
 
-    /// Usa el resultado mostrado como nueva imagen de entrada (para encadenar ediciones).
-    func useCurrentResultAsInput() {
-        guard let url = runner.current?.url else { return }
+    /// Carga la imagen seleccionada en el Estudio si no es ya la de entrada.
+    func sync(with url: URL?) {
+        guard let url, input?.url != url, !isLoading else { return }
         load(url)
     }
 }
@@ -208,7 +209,7 @@ final class OutpaintModel: BaseToolModel {
             safetyTolerance: safety, outputFormat: format
         )
         let description = prompt.isEmpty ? "Outpainting \(Int(canvasSize.width))×\(Int(canvasSize.height))" : prompt
-        runner.run(state: state, endpoint: .outpaint, modelName: "Outpainting", prompt: description, body: body)
+        runner.run(state: state, endpoint: .outpaint, modelName: "Outpainting", prompt: description, body: body, source: input.url)
     }
 }
 
@@ -269,7 +270,7 @@ final class EraseModel: BaseToolModel {
             image: input.encoded.base64, mask: mask.base64EncodedString(),
             dilatePixels: Int(dilatePixels), seed: seed, safetyTolerance: safety, outputFormat: format
         )
-        runner.run(state: state, endpoint: .erase, modelName: "Borrar", prompt: "Borrar zona pintada", body: body)
+        runner.run(state: state, endpoint: .erase, modelName: "Borrar", prompt: "Borrar zona pintada", body: body, source: input.url)
     }
 }
 
@@ -284,7 +285,7 @@ final class DeblurModel: BaseToolModel {
     func generate(state: AppState) {
         guard let input else { return }
         let body = DeblurRequest(image: input.encoded.base64, seed: seed, safetyTolerance: safety, outputFormat: format)
-        runner.run(state: state, endpoint: .deblur, modelName: "Deblur", prompt: "Quitar desenfoque", body: body)
+        runner.run(state: state, endpoint: .deblur, modelName: "Deblur", prompt: "Quitar desenfoque", body: body, source: input.url)
     }
 }
 
@@ -326,6 +327,7 @@ final class TryOnModel: BaseToolModel {
         guard let input, let garment else { return }
         let body = TryOnRequest(prompt: prompt, person: input.encoded.base64, garment: garment.encoded.base64,
                                 seed: seed, safetyTolerance: safety, outputFormat: format)
-        runner.run(state: state, endpoint: .vto, modelName: "Probador virtual", prompt: prompt, body: body, referenceCount: 1)
+        runner.run(state: state, endpoint: .vto, modelName: "Probador virtual", prompt: prompt, body: body,
+                   referenceCount: 1, source: input.url)
     }
 }

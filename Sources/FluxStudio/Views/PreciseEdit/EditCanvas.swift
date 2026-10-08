@@ -12,7 +12,7 @@ struct EditCanvas: View {
     @State private var compareFraction: CGFloat = 0.5
 
     /// Márgenes que dejan sitio a las barras flotantes.
-    private let insets = EdgeInsets(top: 76, leading: 40, bottom: 210, trailing: 40)
+    private let insets = EdgeInsets(top: 76, leading: 40, bottom: 260, trailing: 40)
 
     var body: some View {
         GeometryReader { geo in
@@ -126,7 +126,7 @@ struct EditCanvas: View {
         var x = box.maxX + 14
         if x + width > container.width - 12 { x = box.minX - width - 14 }
         x = min(max(12, x), container.width - width - 12)
-        let y = min(max(76, box.minY), container.height - height - 200)
+        let y = min(max(76, box.minY), container.height - height - 250)
         return CGSize(width: x, height: y)
     }
 

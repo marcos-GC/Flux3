@@ -2,124 +2,6 @@ import AppKit
 import FluxCore
 import SwiftUI
 
-/// "Editar con precisión": réplica de flux-tools.bfl.ai/precise-editing.
-struct PreciseEditView: View {
-    @EnvironmentObject private var state: AppState
-    @EnvironmentObject private var model: PreciseEditModel
-    @State private var showPrompt = false
-    @State private var confirmReset = false
-
-    var body: some View {
-        Group {
-            if model.current == nil {
-                PreciseEditStartView()
-            } else {
-                ZStack {
-                    EditCanvas()
-                    VStack(spacing: 0) {
-                        EditToolbar(showPrompt: $showPrompt, confirmReset: $confirmReset)
-                            .padding(.top, 18)
-                        Spacer()
-                        if showPrompt {
-                            PromptPanel()
-                                .padding(.bottom, 8)
-                                .transition(.move(edge: .bottom).combined(with: .opacity))
-                        }
-                        PreciseEditBar(showPrompt: $showPrompt)
-                            .padding(.bottom, 22)
-                    }
-                }
-            }
-        }
-        .onAppear(perform: takeHandoff)
-        .onChange(of: state.handoff) { takeHandoff() }
-        .animation(.easeOut(duration: 0.18), value: showPrompt)
-        .confirmationDialog("¿Empezar de nuevo?", isPresented: $confirmReset) {
-            Button("Empezar de nuevo", role: .destructive) { model.reset() }
-        } message: {
-            Text("Se quitan la imagen, las regiones y las versiones de esta sesión. Los resultados ya guardados siguen en el Historial.")
-        }
-    }
-
-    private func takeHandoff() {
-        guard let handoff = state.handoff, handoff.mode == .preciseEdit else { return }
-        model.load(handoff.fileURL)
-        state.handoff = nil
-    }
-}
-
-// MARK: - Pantalla inicial
-
-private struct PreciseEditStartView: View {
-    @EnvironmentObject private var model: PreciseEditModel
-    @EnvironmentObject private var history: HistoryStore
-    @State private var isDropTarget = false
-    @State private var showHistory = false
-
-    var body: some View {
-        VStack(spacing: 22) {
-            VStack(spacing: 6) {
-                Text("Editar con precisión")
-                    .font(.system(size: 26, weight: .semibold))
-                    .foregroundStyle(Theme.textPrimary)
-                Text("Dibuja regiones sobre la imagen y di qué debe cambiar en cada una.")
-                    .foregroundStyle(Theme.textSecondary)
-            }
-
-            VStack(spacing: 14) {
-                Image(systemName: "photo.badge.plus")
-                    .font(.system(size: 34, weight: .light))
-                    .foregroundStyle(Theme.textSecondary)
-                Button {
-                    if let url = chooseImages(allowsMultiple: false).first { model.load(url) }
-                } label: {
-                    Text("Subir imagen")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 26)
-                        .padding(.vertical, 11)
-                        .background(Capsule().fill(Theme.action))
-                }
-                .buttonStyle(.plain)
-                Text("o arrastra una imagen aquí")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Theme.textSecondary)
-            }
-            .frame(width: 520, height: 260)
-            .background(
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .fill(isDropTarget ? Theme.region.opacity(0.08) : Theme.surface)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .strokeBorder(isDropTarget ? Theme.region : Theme.border, style: StrokeStyle(lineWidth: 1.5, dash: [7, 5]))
-            )
-            .dropDestination(for: URL.self) { urls, _ in
-                guard let url = urls.first(where: ReferenceImage.isSupported) else { return false }
-                model.load(url)
-                return true
-            } isTargeted: { isDropTarget = $0 }
-
-            Button { showHistory = true } label: {
-                Chip(icon: "clock.arrow.circlepath", text: "Usar una imagen del historial")
-            }
-            .buttonStyle(.plain)
-
-            if let error = model.loadError {
-                Text(error).font(.system(size: 12)).foregroundStyle(Theme.danger)
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .sheet(isPresented: $showHistory) {
-            HistoryPicker { url in
-                showHistory = false
-                if let url { model.load(url) }
-            }
-            .environmentObject(history)
-        }
-    }
-}
-
 /// Selector de una imagen del Historial.
 struct HistoryPicker: View {
     @EnvironmentObject private var history: HistoryStore
@@ -175,11 +57,10 @@ private struct PickerThumb: View {
     }
 }
 
-// MARK: - Barra superior
 
-private struct EditToolbar: View {
+/// Barra superior de Editar con precisión (estilo FLUX Tools).
+struct EditToolbar: View {
     @EnvironmentObject private var model: PreciseEditModel
-    @Binding var showPrompt: Bool
     @Binding var confirmReset: Bool
 
     var body: some View {
@@ -193,6 +74,7 @@ private struct EditToolbar: View {
             divider
             ToolTextButton(icon: "arrow.down.to.line", title: "Descargar") { download() }
             ToolTextButton(icon: "arrow.counterclockwise", title: "Empezar de nuevo") { confirmReset = true }
+                .help("Quita regiones y versiones y vuelve a la imagen original")
 
             if model.parentOfCurrent != nil {
                 divider

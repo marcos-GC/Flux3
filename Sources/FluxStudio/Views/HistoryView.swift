@@ -221,6 +221,8 @@ private struct HistoryDetailView: View {
                     }
 
                     VStack(alignment: .leading, spacing: 8) {
+                        Button("Abrir en el Estudio") { close(); state.focus(item.fileURL) }
+                            .keyboardShortcut(.defaultAction)
                         Button("Reutilizar prompt y parámetros") { close(); state.reuse(item.record) }
                         Button("Usar como referencia") { close(); state.useAsReference(item.fileURL) }
                         Menu("Enviar a…") {

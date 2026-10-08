@@ -6,11 +6,11 @@ enum AppMode: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    static let tools: [AppMode] = [.generate, .preciseEdit, .outpaint, .erase, .tryOn, .deblur, .video]
+    static let tools: [AppMode] = [.generate]
 
     var title: String {
         switch self {
-        case .generate: return "Generar"
+        case .generate: return "Estudio"
         case .preciseEdit: return "Editar con precisión"
         case .outpaint: return "Outpainting"
         case .erase: return "Borrar"

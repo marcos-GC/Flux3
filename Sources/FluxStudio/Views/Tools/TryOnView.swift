@@ -1,12 +1,13 @@
 import FluxCore
 import SwiftUI
 
-/// Probador virtual: persona + prenda + prompt.
-struct TryOnView: View {
+/// Barra inferior del Probador virtual: la persona es la imagen seleccionada; aquí se elige la prenda.
+struct TryOnBar: View {
     @EnvironmentObject private var state: AppState
     @ObservedObject var model: TryOnModel
     @ObservedObject private var runner: ToolRunner
     @State private var editPrompt = false
+    @State private var isDropTarget = false
 
     init(model: TryOnModel) {
         self.model = model
@@ -14,127 +15,79 @@ struct TryOnView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            ToolHeader(title: "Probador virtual", subtitle: "Viste a la persona con la prenda u objeto de la segunda imagen.") {
-                if model.input != nil || model.garment != nil {
-                    Button("Empezar de nuevo") { model.reset() }
-                }
-            }
-
-            HStack(spacing: 18) {
-                VStack(spacing: 14) {
-                    slot(title: "Persona", subtitle: "Imagen 1", image: model.input?.image, loading: model.isLoading) {
-                        model.load($0)
-                    }
-                    slot(title: "Prenda", subtitle: "Imagen 2", image: model.garment?.image, loading: model.garmentLoading) {
-                        model.loadGarment($0)
-                    }
-                }
-                .frame(width: 260)
-
-                Group {
-                    if runner.current != nil {
-                        ToolResultView(runner: runner, before: model.input?.image) { model.useCurrentResultAsInput() }
-                    } else {
-                        VStack(spacing: 8) {
-                            Image(systemName: "tshirt").font(.system(size: 30, weight: .light))
-                            Text("El resultado aparecerá aquí").font(.system(size: 13))
-                        }
-                        .foregroundStyle(Theme.textSecondary)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(RoundedRectangle(cornerRadius: 20).fill(Theme.surface.opacity(0.6)))
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-            .padding(.horizontal, 40)
-            .padding(.bottom, 12)
-
-            if let error = model.loadError {
-                Text(error).font(.system(size: 12)).foregroundStyle(Theme.danger).padding(.bottom, 6)
-            }
-
-            ToolBarContainer {
-                if editPrompt {
-                    TextField("Prompt", text: Binding(
-                        get: { model.prompt },
-                        set: { model.customPrompt = $0 }
-                    ), axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 13, design: .monospaced))
-                    .lineLimit(1...4)
-                    .padding(.horizontal, 6)
-                } else {
-                    TextField("Describe la prenda en inglés (p. ej. «oversized denim jacket», «red Nike hoodie»)",
-                              text: $model.garmentDescription)
+        ToolBarContainer {
+            HStack(alignment: .top, spacing: 12) {
+                garmentSlot
+                VStack(alignment: .leading, spacing: 6) {
+                    if editPrompt {
+                        TextField("Prompt", text: Binding(
+                            get: { model.prompt },
+                            set: { model.customPrompt = $0 }
+                        ), axis: .vertical)
                         .textFieldStyle(.plain)
-                        .font(.system(size: 14))
-                        .padding(.horizontal, 6)
-                    Text(model.prompt)
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(Theme.textSecondary)
-                        .padding(.horizontal, 6)
-                        .textSelection(.enabled)
-                }
-                HStack(spacing: 8) {
-                    Button {
-                        editPrompt.toggle()
-                        if !editPrompt { model.customPrompt = nil }
-                    } label: {
-                        Chip(icon: "pencil", text: editPrompt ? "Usar la fórmula de BFL" : "Editar prompt", isActive: editPrompt)
-                    }
-                    .buttonStyle(.plain)
-                    Text("Describe solo la prenda: la cara, la pose y el fondo se mantienen solos.")
-                        .font(.system(size: 11))
-                        .foregroundStyle(Theme.textSecondary)
-                    Spacer()
-                    ToolSettingsChip(model: model)
-                    ToolGenerateControls(runner: runner, enabled: model.input != nil && model.garment != nil) {
-                        model.generate(state: state)
+                        .font(.system(size: 13, design: .monospaced))
+                        .lineLimit(1...4)
+                    } else {
+                        TextField("Describe la prenda en inglés (p. ej. «oversized denim jacket»)", text: $model.garmentDescription)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 14))
+                        Text(model.prompt)
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(Theme.textSecondary)
+                            .lineLimit(2)
+                            .textSelection(.enabled)
                     }
                 }
             }
-        }
-        .onAppear(perform: takeHandoff)
-        .onChange(of: state.handoff) { takeHandoff() }
-    }
-
-    @ViewBuilder
-    private func slot(title: String, subtitle: String, image: NSImage?, loading: Bool, onPick: @escaping (URL) -> Void) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                SectionLabel(title)
-                Text(subtitle).font(.system(size: 10)).foregroundStyle(Theme.textSecondary)
+            HStack(spacing: 8) {
+                Button {
+                    editPrompt.toggle()
+                    if !editPrompt { model.customPrompt = nil }
+                } label: {
+                    Chip(icon: "pencil", text: editPrompt ? "Usar la fórmula de BFL" : "Editar prompt", isActive: editPrompt)
+                }
+                .buttonStyle(.plain)
+                Text("La persona es la imagen seleccionada. Describe solo la prenda.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.textSecondary)
                 Spacer()
-                if image != nil {
-                    Button("Cambiar") {
-                        if let url = chooseImages(allowsMultiple: false).first { onPick(url) }
-                    }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 11, weight: .medium))
+                ToolSettingsChip(model: model)
+                ToolGenerateControls(runner: runner, enabled: model.input != nil && model.garment != nil) {
+                    model.generate(state: state)
                 }
             }
-            Group {
-                if let image {
-                    FittedImage(image: image)
-                        .dropDestination(for: URL.self) { urls, _ in
-                            guard let url = urls.first(where: ReferenceImage.isSupported) else { return false }
-                            onPick(url)
-                            return true
-                        }
-                } else if loading {
-                    ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    ToolDropZone(title: "Subir", subtitle: "o arrastra", compact: true, onPick: onPick)
-                }
-            }
-            .frame(maxHeight: .infinity)
         }
     }
 
-    private func takeHandoff() {
-        guard let handoff = state.handoff, handoff.mode == .tryOn else { return }
-        model.load(handoff.fileURL)
-        state.handoff = nil
+    private var garmentSlot: some View {
+        Button {
+            if let url = chooseImages(allowsMultiple: false).first { model.loadGarment(url) }
+        } label: {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10).fill(isDropTarget ? Theme.region.opacity(0.1) : Color.white.opacity(0.7))
+                if let garment = model.garment {
+                    Image(nsImage: garment.image).resizable().scaledToFill()
+                } else if model.garmentLoading {
+                    ProgressView().controlSize(.small)
+                } else {
+                    VStack(spacing: 3) {
+                        Image(systemName: "tshirt").font(.system(size: 16))
+                        Text("Prenda").font(.system(size: 10, weight: .medium))
+                    }
+                    .foregroundStyle(Theme.textSecondary)
+                }
+            }
+            .frame(width: 64, height: 64)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(isDropTarget ? Theme.region : Theme.border,
+                                                                      style: StrokeStyle(lineWidth: 1, dash: model.garment == nil ? [4, 3] : [])))
+        }
+        .buttonStyle(.plain)
+        .help("Imagen 2: la prenda u objeto (haz clic o arrastra una imagen)")
+        .dropDestination(for: URL.self) { urls, _ in
+            guard let url = urls.first(where: ReferenceImage.isSupported) else { return false }
+            model.loadGarment(url)
+            return true
+        } isTargeted: { isDropTarget = $0 }
     }
 }

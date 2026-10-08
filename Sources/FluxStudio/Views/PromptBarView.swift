@@ -74,6 +74,15 @@ struct PromptBarView: View {
 
                 Spacer(minLength: 8)
 
+                if state.isGenerating {
+                    ProgressView().controlSize(.small)
+                    Button("Cancelar") { state.cancelAllGenerations() }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Theme.danger)
+                        .help("Deja de esperar los resultados. BFL puede cobrar igualmente si ya habían empezado.")
+                }
+
                 Button { state.generateImage() } label: {
                     Image(systemName: "arrow.up")
                         .font(.system(size: 15, weight: .bold))
@@ -90,6 +99,11 @@ struct PromptBarView: View {
         .padding(14)
         .frame(maxWidth: 820)
         .surfaceStyle(cornerRadius: Theme.cornerPromptBar)
+        // Soltar imágenes sobre la barra = añadirlas como referencia.
+        .dropDestination(for: URL.self) { urls, _ in
+            state.addReferences(urls)
+            return true
+        }
         .padding(.horizontal, 28)
         .onAppear { focused = true }
     }

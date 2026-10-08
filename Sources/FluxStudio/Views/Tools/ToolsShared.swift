@@ -58,27 +58,6 @@ struct ToolDropZone: View {
     }
 }
 
-/// Cabecera de cada herramienta: título, descripción y acciones.
-struct ToolHeader<Actions: View>: View {
-    let title: String
-    let subtitle: String
-    @ViewBuilder let actions: () -> Actions
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: 22, weight: .semibold)).foregroundStyle(Theme.textPrimary)
-                Text(subtitle).font(.system(size: 12)).foregroundStyle(Theme.textSecondary)
-            }
-            Spacer()
-            actions()
-        }
-        .padding(.horizontal, 32)
-        .padding(.top, 34)
-        .padding(.bottom, 12)
-    }
-}
-
 /// Barra flotante inferior de las herramientas.
 struct ToolBarContainer<Content: View>: View {
     @ViewBuilder let content: () -> Content
@@ -89,7 +68,6 @@ struct ToolBarContainer<Content: View>: View {
             .frame(maxWidth: 900)
             .surfaceStyle(cornerRadius: Theme.cornerPromptBar)
             .padding(.horizontal, 28)
-            .padding(.bottom, 22)
     }
 }
 
@@ -175,77 +153,23 @@ extension ToolSettingsChip where Extra == EmptyView {
     }
 }
 
-/// Resultado actual (con comparador) + tira de resultados + acciones.
-struct ToolResultView: View {
-    @EnvironmentObject private var state: AppState
-    @ObservedObject var runner: ToolRunner
-    let before: NSImage?
-    var comparable = true
-    let onUseAsInput: () -> Void
-    @State private var showCompare = true
-    @State private var fraction: CGFloat = 0.5
+/// Mientras se prepara la imagen seleccionada para una herramienta.
+struct ToolLoadingView: View {
+    let isLoading: Bool
+    let error: String?
 
     var body: some View {
-        if let result = runner.current {
-            VStack(spacing: 12) {
-                GeometryReader { geo in
-                    let size = fittedSize(result.image.size, in: geo.size)
-                    Group {
-                        if comparable && showCompare, let before {
-                            CompareView(before: before, after: result.image, fraction: $fraction)
-                        } else {
-                            Image(nsImage: result.image).resizable()
-                                .onDrag { NSItemProvider(contentsOf: result.url) ?? NSItemProvider() }
-                        }
-                    }
-                    .frame(width: size.width, height: size.height)
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.cornerResult, style: .continuous))
-                    .contextMenu { ResultActions(fileURL: result.url) }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
-
-                HStack(spacing: 8) {
-                    if comparable && before != nil {
-                        Button { showCompare.toggle() } label: {
-                            Chip(icon: "rectangle.split.2x1", text: "Antes / Después", isActive: showCompare)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    Button { onUseAsInput() } label: {
-                        Chip(icon: "arrow.uturn.left", text: "Seguir editando este resultado")
-                    }
-                    .buttonStyle(.plain)
-                    Button { NSWorkspace.shared.activateFileViewerSelecting([result.url]) } label: {
-                        Chip(icon: "folder", text: "Mostrar en Finder")
-                    }
-                    .buttonStyle(.plain)
-                    Menu {
-                        ResultActions(fileURL: result.url)
-                    } label: {
-                        Chip(icon: "ellipsis", text: "Más")
-                    }
-                    .menuStyle(.borderlessButton)
-                    .menuIndicator(.hidden)
-                    .fixedSize()
-
-                    if runner.results.count > 1 {
-                        Spacer()
-                        ForEach(runner.results) { item in
-                            Image(nsImage: item.image)
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: 34, height: 34)
-                                .clipShape(RoundedRectangle(cornerRadius: 6))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 6)
-                                        .strokeBorder(item.id == result.id ? Theme.textPrimary : Theme.border, lineWidth: item.id == result.id ? 2 : 1)
-                                )
-                                .onTapGesture { runner.selectedID = item.id }
-                        }
-                    }
-                }
+        VStack(spacing: 8) {
+            if let error {
+                Image(systemName: "exclamationmark.triangle").font(.system(size: 22))
+                Text(error).font(.system(size: 12)).multilineTextAlignment(.center)
+            } else {
+                ProgressView()
+                Text("Preparando la imagen…").font(.system(size: 12))
             }
         }
+        .foregroundStyle(error == nil ? Theme.textSecondary : Theme.danger)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

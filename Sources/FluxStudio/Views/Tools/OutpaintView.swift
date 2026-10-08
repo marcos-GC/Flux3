@@ -1,12 +1,11 @@
 import FluxCore
 import SwiftUI
 
-/// Outpainting: la imagen dentro de un lienzo mayor; se arrastra para colocarla.
-struct OutpaintView: View {
+/// Barra inferior de Ampliar (Outpainting).
+struct OutpaintBar: View {
     @EnvironmentObject private var state: AppState
     @ObservedObject var model: OutpaintModel
     @ObservedObject private var runner: ToolRunner
-    @State private var showResult = true
 
     init(model: OutpaintModel) {
         self.model = model
@@ -14,58 +13,6 @@ struct OutpaintView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            ToolHeader(title: "Outpainting", subtitle: "Amplía la imagen más allá de sus bordes.") {
-                if model.input != nil {
-                    if runner.current != nil {
-                        Picker("", selection: $showResult) {
-                            Text("Lienzo").tag(false)
-                            Text("Resultado").tag(true)
-                        }
-                        .pickerStyle(.segmented)
-                        .labelsHidden()
-                        .frame(width: 200)
-                    }
-                    Button("Cambiar imagen") { model.reset() }
-                }
-            }
-
-            Group {
-                if let input = model.input {
-                    if showResult && runner.current != nil {
-                        ToolResultView(runner: runner, before: nil, comparable: false) {
-                            model.useCurrentResultAsInput()
-                            showResult = false
-                        }
-                    } else {
-                        OutpaintCanvas(model: model, input: input)
-                    }
-                } else if model.isLoading {
-                    ProgressView()
-                } else {
-                    ToolDropZone(title: "Subir imagen") { model.load($0) }
-                        .frame(maxWidth: 560, maxHeight: 320)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(.horizontal, 40)
-            .padding(.bottom, 12)
-
-            if let error = model.loadError {
-                Text(error).font(.system(size: 12)).foregroundStyle(Theme.danger).padding(.bottom, 6)
-            }
-
-            if model.input != nil {
-                bar
-            }
-        }
-        .onAppear(perform: takeHandoff)
-        .onChange(of: state.handoff) { takeHandoff() }
-        .onChange(of: runner.results.count) { showResult = true }
-        .onChange(of: model.safety) { model.safety = SafetyTolerance.clamp(model.safety, for: .outpaint) }
-    }
-
-    private var bar: some View {
         ToolBarContainer {
             TextField("Qué debe aparecer en la zona nueva (opcional)", text: $model.prompt, axis: .vertical)
                 .textFieldStyle(.plain)
@@ -78,9 +25,9 @@ struct OutpaintView: View {
                            selection: $model.preset, label: { $0.label })
                 ChipPicker(icon: "arrow.up.left.and.arrow.down.right", title: "Ampliar", options: OutpaintModel.expansions,
                            selection: $model.expand, label: { $0 == 1 ? "Ajustado" : "×\($0.formatted(.number.precision(.fractionLength(0...2))))" })
-                sizeField("An", value: Int(model.canvasSize.width)) { model.setCanvas(width: $0) }
+                SizeField(label: "An", value: Int(model.canvasSize.width)) { model.setCanvas(width: $0) }
                 Text("×").foregroundStyle(Theme.textSecondary)
-                sizeField("Al", value: Int(model.canvasSize.height)) { model.setCanvas(height: $0) }
+                SizeField(label: "Al", value: Int(model.canvasSize.height)) { model.setCanvas(height: $0) }
                 Button { model.offset = nil } label: { Chip(icon: "scope", text: "Centrar") }
                     .buttonStyle(.plain)
                     .disabled(model.offset == nil)
@@ -97,15 +44,18 @@ struct OutpaintView: View {
             }
         }
     }
+}
 
-    private func sizeField(_ label: String, value: Int, onCommit: @escaping (Int) -> Void) -> some View {
-        SizeField(label: label, value: value, onCommit: onCommit)
-    }
+/// Lienzo de Ampliar en el escenario.
+struct OutpaintStage: View {
+    @ObservedObject var model: OutpaintModel
 
-    private func takeHandoff() {
-        guard let handoff = state.handoff, handoff.mode == .outpaint else { return }
-        model.load(handoff.fileURL)
-        state.handoff = nil
+    var body: some View {
+        if let input = model.input {
+            OutpaintCanvas(model: model, input: input)
+        } else {
+            ToolLoadingView(isLoading: model.isLoading, error: model.loadError)
+        }
     }
 }
 
@@ -144,7 +94,7 @@ private struct SizeField: View {
 }
 
 /// Lienzo con la imagen colocada dentro; arrastrarla fija reference_offset_x/y.
-private struct OutpaintCanvas: View {
+struct OutpaintCanvas: View {
     @ObservedObject var model: OutpaintModel
     let input: ToolImage
     @State private var dragStart: CGPoint?

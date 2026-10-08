@@ -9,10 +9,57 @@ struct AppAlert: Identifiable {
     var opensSettings = false
 }
 
-/// Imagen enviada desde el Historial o el feed a otra herramienta.
-struct Handoff: Equatable {
-    let fileURL: URL
-    let mode: AppMode
+/// Herramientas del Estudio: todas trabajan sobre la imagen seleccionada.
+enum WorkspaceTool: String, CaseIterable, Identifiable {
+    case generate, edit, erase, outpaint, deblur, tryOn, video
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .generate: return "Generar"
+        case .edit: return "Editar"
+        case .erase: return "Borrar"
+        case .outpaint: return "Ampliar"
+        case .deblur: return "Deblur"
+        case .tryOn: return "Probador"
+        case .video: return "Vídeo"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .generate: return "sparkles"
+        case .edit: return "selection.pin.in.out"
+        case .erase: return "eraser"
+        case .outpaint: return "arrow.up.left.and.arrow.down.right"
+        case .deblur: return "camera.aperture"
+        case .tryOn: return "tshirt"
+        case .video: return "film"
+        }
+    }
+
+    var help: String {
+        switch self {
+        case .generate: return "Generar imágenes nuevas con FLUX 3 Image"
+        case .edit: return "Editar con precisión: regiones con instrucciones"
+        case .erase: return "Borrar objetos pintando encima"
+        case .outpaint: return "Ampliar la imagen más allá de sus bordes (Outpainting)"
+        case .deblur: return "Quitar el desenfoque"
+        case .tryOn: return "Probador virtual: vestir a la persona con una prenda"
+        case .video: return "Crear un vídeo a partir de la imagen"
+        }
+    }
+
+    /// Las herramientas de edición necesitan una imagen seleccionada.
+    var needsImage: Bool { self != .generate && self != .video }
+}
+
+/// Petición en curso (se muestra en la tira de resultados).
+struct ActiveJob: Identifiable, Equatable {
+    let id = UUID()
+    let label: String
+    var status: String
 }
 
 /// Estado principal de la app: modo activo, feed y generaciones en curso.
@@ -25,7 +72,12 @@ final class AppState: ObservableObject {
     @Published var references: [ReferenceImage] = []
     @Published var sessionCredits: Double = 0
     @Published var alert: AppAlert?
-    @Published var handoff: Handoff?
+    /// Imagen seleccionada en el Estudio (todas las herramientas trabajan sobre ella).
+    @Published var focusedURL: URL?
+    @Published var tool: WorkspaceTool = .generate
+    @Published var activeJobs: [ActiveJob] = []
+    /// De qué imagen sale cada resultado (para Antes / Después).
+    @Published private(set) var parents: [URL: URL] = [:]
 
     let settings: SettingsStore
     let history: HistoryStore
@@ -213,20 +265,29 @@ final class AppState: ObservableObject {
     func runJob<Body: Encodable & Sendable>(
         client: BFLClient, endpoint: BFLEndpoint, body: Body, modelName: String, prefix: String,
         index: Int, prompt: String, sentPrompt: String, parameters: JSONValue, referenceCount: Int,
+        source: URL? = nil,
         progress: @escaping JobProgress
     ) async throws -> JobOutput {
+        let job = ActiveJob(label: modelName, status: "Enviando")
+        activeJobs.insert(job, at: 0)
+        defer { activeJobs.removeAll { $0.id == job.id } }
+        let jobID = job.id
+
         let (submitted, final) = try await client.run(
             endpoint,
             body: body,
             onSubmitted: { [weak self] sub in
                 await self?.addCredits(sub.cost)
+                await self?.setJobStatus(jobID, .running(.pending))
                 await progress(.running(.pending), sub.id, sub.cost)
             },
-            onUpdate: { poll in
+            onUpdate: { [weak self] poll in
+                await self?.setJobStatus(jobID, .running(poll.status))
                 await progress(.running(poll.status), nil, nil)
             }
         )
         guard let result = final.result, let url = result.sampleURLs.first else { throw BFLError.noResult }
+        setJobStatus(jobID, .downloading)
         progress(.downloading, nil, nil)
         let download = try await client.download(url)
         let record = GenerationRecord(
@@ -248,7 +309,15 @@ final class AppState: ObservableObject {
             base: settings.outputFolder, prefix: prefix, index: index, record: record
         )
         history.add(stored)
+        if let source { parents[stored.fileURL] = source }
+        // El resultado nuevo pasa a ser la imagen seleccionada: se puede seguir editando.
+        focusedURL = stored.fileURL
         return JobOutput(stored: stored, data: download.data, result: result, submitted: submitted)
+    }
+
+    private func setJobStatus(_ id: UUID, _ phase: ResultSlot.Phase) {
+        guard let i = activeJobs.firstIndex(where: { $0.id == id }) else { return }
+        activeJobs[i].status = PreciseEditModel.describe(phase)
     }
 
     private func addCredits(_ cost: Double?) {
@@ -270,6 +339,7 @@ final class AppState: ObservableObject {
     /// Vuelve a poner el prompt de una fila del feed en la barra.
     func reuse(_ item: FeedItem) {
         prompt = item.prompt
+        tool = .generate
         mode = .generate
     }
 
@@ -283,6 +353,7 @@ final class AppState: ObservableObject {
             imageParams.safety = s.safetyTolerance
             imageParams.grounding = s.grounding
         }
+        tool = .generate
         mode = .generate
         if (record.referenceCount ?? 0) > 0 {
             alert = AppAlert(
@@ -294,12 +365,41 @@ final class AppState: ObservableObject {
 
     func useAsReference(_ url: URL) {
         addReferences([url])
+        tool = .generate
+        mode = .generate
+    }
+
+    /// Selecciona una imagen en el Estudio (y opcionalmente una herramienta).
+    func focus(_ url: URL, tool: WorkspaceTool? = nil) {
+        focusedURL = url
+        if let tool { self.tool = tool }
         mode = .generate
     }
 
     func send(_ url: URL, to target: AppMode) {
-        handoff = Handoff(fileURL: url, mode: target)
-        mode = target
+        let tool: WorkspaceTool
+        switch target {
+        case .preciseEdit: tool = .edit
+        case .outpaint: tool = .outpaint
+        case .erase: tool = .erase
+        case .deblur: tool = .deblur
+        case .tryOn: tool = .tryOn
+        case .video: tool = .video
+        default: tool = .generate
+        }
+        focus(url, tool: tool)
+    }
+
+    func parent(of url: URL?) -> URL? {
+        url.flatMap { parents[$0] }
+    }
+
+    var isGenerating: Bool {
+        feed.contains { $0.isRunning }
+    }
+
+    func cancelAllGenerations() {
+        for item in feed where item.isRunning { cancel(itemID: item.id) }
     }
 
     private func updateSlot(_ itemID: UUID, _ slotID: UUID, _ change: (inout ResultSlot) -> Void) {

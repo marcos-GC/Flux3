@@ -1,12 +1,11 @@
 import FluxCore
 import SwiftUI
 
-/// Borrar: se pinta la máscara con un pincel sobre la imagen.
-struct EraseView: View {
+/// Barra inferior de Borrar: pincel, goma, deshacer, invertir…
+struct EraseBar: View {
     @EnvironmentObject private var state: AppState
     @ObservedObject var model: EraseModel
     @ObservedObject private var runner: ToolRunner
-    @State private var showResult = true
 
     init(model: EraseModel) {
         self.model = model
@@ -14,56 +13,6 @@ struct EraseView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            ToolHeader(title: "Borrar", subtitle: "Pinta lo que quieres eliminar; el modelo rellena el hueco.") {
-                if model.input != nil {
-                    if runner.current != nil {
-                        Picker("", selection: $showResult) {
-                            Text("Máscara").tag(false)
-                            Text("Resultado").tag(true)
-                        }
-                        .pickerStyle(.segmented)
-                        .labelsHidden()
-                        .frame(width: 200)
-                    }
-                    Button("Cambiar imagen") { model.reset() }
-                }
-            }
-
-            Group {
-                if let input = model.input {
-                    if showResult && runner.current != nil {
-                        ToolResultView(runner: runner, before: input.image) {
-                            model.useCurrentResultAsInput()
-                            showResult = false
-                        }
-                    } else {
-                        MaskCanvas(model: model, input: input)
-                    }
-                } else if model.isLoading {
-                    ProgressView()
-                } else {
-                    ToolDropZone(title: "Subir imagen") { model.load($0) }
-                        .frame(maxWidth: 560, maxHeight: 320)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(.horizontal, 40)
-            .padding(.bottom, 12)
-
-            if let error = model.loadError {
-                Text(error).font(.system(size: 12)).foregroundStyle(Theme.danger).padding(.bottom, 6)
-            }
-            if model.input != nil {
-                bar
-            }
-        }
-        .onAppear(perform: takeHandoff)
-        .onChange(of: state.handoff) { takeHandoff() }
-        .onChange(of: runner.results.count) { showResult = true }
-    }
-
-    private var bar: some View {
         ToolBarContainer {
             HStack(spacing: 8) {
                 Picker("", selection: $model.isEraser) {
@@ -132,10 +81,18 @@ struct EraseView: View {
         .help(help)
     }
 
-    private func takeHandoff() {
-        guard let handoff = state.handoff, handoff.mode == .erase else { return }
-        model.load(handoff.fileURL)
-        state.handoff = nil
+}
+
+/// Imagen con la máscara en el escenario.
+struct EraseStage: View {
+    @ObservedObject var model: EraseModel
+
+    var body: some View {
+        if let input = model.input {
+            MaskCanvas(model: model, input: input)
+        } else {
+            ToolLoadingView(isLoading: model.isLoading, error: model.loadError)
+        }
     }
 }
 
