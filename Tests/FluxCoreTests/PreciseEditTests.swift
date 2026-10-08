@@ -65,7 +65,7 @@ final class PreciseEditTests: XCTestCase {
         XCTAssertTrue(prompt.contains(#"{"id":"region_1","from":"ref_image_1","src_bbox":null,"tgt_bbox":[700,700,900,900],"desc":"a \"green\" armchair","kind":"new"}"#))
         XCTAssertTrue(prompt.contains("Move the element in the marked area <region_2> from the upper left to the upper right."))
         XCTAssertTrue(prompt.contains(#"{"id":"region_2","from":"ref_image_0","src_bbox":[0,0,100,100],"tgt_bbox":[0,800,100,900],"kind":"move"}"#))
-        XCTAssertTrue(prompt.contains("Keep the marked area <region_3> in the center unchanged."))
+        XCTAssertTrue(prompt.contains("Keep the marked area <region_3> in the centre of the frame unchanged."))
         XCTAssertTrue(prompt.contains(#"{"id":"region_3","from":"ref_image_0","src_bbox":[400,400,600,600],"kind":"anchor"}"#))
     }
 
@@ -77,6 +77,17 @@ final class PreciseEditTests: XCTestCase {
         XCTAssertTrue(prompt.contains("Edit the first reference image. warmer light! Apply this edit"))
         XCTAssertTrue(prompt.contains("in the upper left, using <ref_image_1> as the reference: \"replace the lamp\"."))
         XCTAssertTrue(prompt.contains("Use <ref_image_2>, <ref_image_3> as additional reference. Keep everything else"))
+    }
+
+    /// Segundo ejemplo copiado de la herramienta oficial (región en el centro y otra arriba a la derecha).
+    func testMatchesOfficialCentreExample() {
+        let regions = [
+            EditRegionSpec(number: 1, source: PixelRect(x: 300, y: 300, width: 400, height: 400), instruction: "change"),
+            EditRegionSpec(number: 2, source: PixelRect(x: 712, y: 35, width: 229, height: 193), instruction: "corlour change"),
+        ]
+        let prompt = PreciseEdit.buildPrompt(globalInstruction: "", regions: regions, imageWidth: 1000, imageHeight: 1000)
+        let expected = #"Edit the first reference image. Apply this edit to the marked area <region_1> in the centre of the frame: "change". Apply this edit to the marked area <region_2> in the upper right: "corlour change". Keep everything else — composition, lighting, other subjects, and style — exactly as in the reference image. [{"id":"region_1","from":"ref_image_0","src_bbox":[300,300,700,700]},{"id":"region_2","from":"ref_image_0","src_bbox":[35,712,228,941]}]"#
+        XCTAssertEqual(prompt, expected)
     }
 
     func testSmallBoxWarning() {

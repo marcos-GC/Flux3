@@ -80,9 +80,9 @@ public struct EditRegionSpec: Sendable, Equatable {
 /// Construcción del prompt de "Editar con precisión", replicando la herramienta oficial
 /// flux-tools.bfl.ai/precise-editing.
 public enum PreciseEdit {
-    /// Palabra para la celda central de la cuadrícula 3×3.
-    /// Sin verificar en la herramienta oficial (la red no lo permitió): si allí aparece otra, cambiar aquí.
-    public static let centerWord = "center"
+    /// Texto para la celda central de la cuadrícula 3×3, tal como lo escribe la herramienta
+    /// oficial: "…to the marked area <region_1> in the centre of the frame: …".
+    public static let centerWord = "centre of the frame"
 
     public static let closingSentence =
         "Keep everything else — composition, lighting, other subjects, and style — exactly as in the reference image."
