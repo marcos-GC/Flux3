@@ -4,7 +4,7 @@ import Foundation
 
 /// Un hueco del grid de resultados (una petición a BFL).
 struct ResultSlot: Identifiable {
-    enum Phase: Equatable {
+    enum Phase: Equatable, Sendable {
         case submitting
         case running(BFLStatus)
         case downloading

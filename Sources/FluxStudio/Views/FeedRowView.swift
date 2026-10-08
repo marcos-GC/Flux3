@@ -77,22 +77,47 @@ struct FeedRowView: View {
     }
 }
 
-private struct ResultGrid: View {
-    let item: FeedItem
+/// Espacio disponible en el feed (lo fija FeedView) para dimensionar los resultados.
+struct FeedSpace: Equatable {
+    var gridWidth: CGFloat = 700
+    var maxHeight: CGFloat = 560
+}
 
-    private var cellSize: CGSize {
-        let width: CGFloat = item.slots.count <= 1 ? 340 : (item.slots.count == 2 ? 280 : 210)
-        var height = width / CGFloat(item.aspectRatio)
-        height = min(height, 420)
-        return CGSize(width: width, height: height)
+private struct FeedSpaceKey: EnvironmentKey {
+    static let defaultValue = FeedSpace()
+}
+
+extension EnvironmentValues {
+    var feedSpace: FeedSpace {
+        get { self[FeedSpaceKey.self] }
+        set { self[FeedSpaceKey.self] = newValue }
+    }
+}
+
+/// Resultados en su proporción real, lo más grandes posible; con varias imágenes,
+/// todas a la misma altura y reducidas lo justo para caber en la fila.
+private struct ResultGrid: View {
+    @Environment(\.feedSpace) private var space
+    let item: FeedItem
+    private let spacing: CGFloat = 10
+
+    private func ratio(_ slot: ResultSlot) -> CGFloat {
+        if let size = slot.image?.size, size.width > 0, size.height > 0 {
+            return size.width / size.height
+        }
+        return CGFloat(item.aspectRatio)
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            ForEach(item.slots) { slot in
-                ResultCell(slot: slot, size: cellSize, prompt: item.prompt)
+        let ratios = item.slots.map(ratio)
+        let available = max(200, space.gridWidth - spacing * CGFloat(max(0, ratios.count - 1)))
+        let height = min(space.maxHeight, available / max(ratios.reduce(0, +), 0.1))
+        HStack(alignment: .top, spacing: spacing) {
+            ForEach(Array(item.slots.enumerated()), id: \.element.id) { index, slot in
+                ResultCell(slot: slot, size: CGSize(width: height * ratios[index], height: height), prompt: item.prompt)
             }
         }
+        .animation(.easeOut(duration: 0.2), value: height)
     }
 }
 
@@ -108,7 +133,7 @@ private struct ResultCell: View {
                 if let image = slot.image, let url = slot.fileURL {
                     Image(nsImage: image)
                         .resizable()
-                        .scaledToFill()
+                        .aspectRatio(contentMode: .fit)
                         .frame(width: size.width, height: size.height)
                         .clipShape(RoundedRectangle(cornerRadius: Theme.cornerResult, style: .continuous))
                         .onDrag { NSItemProvider(contentsOf: url) ?? NSItemProvider() }
@@ -116,6 +141,7 @@ private struct ResultCell: View {
                             ResultActions(fileURL: url, prompt: prompt, expandedPrompt: slot.expandedPrompt)
                         }
                         .help(slot.expandedPrompt ?? "")
+                        .onTapGesture(count: 2) { NSWorkspace.shared.open(url) }
                 } else {
                     message(icon: "photo", text: "Guardado, pero no se puede previsualizar")
                 }

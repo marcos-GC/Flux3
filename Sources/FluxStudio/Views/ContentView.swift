@@ -40,6 +40,8 @@ struct ContentView: View {
             SettingsView()
         case .history:
             HistoryView()
+        case .preciseEdit:
+            PreciseEditView()
         default:
             PlaceholderView(mode: state.mode)
         }

@@ -20,6 +20,7 @@ struct FeedView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(.bottom, 160)
         } else {
+            GeometryReader { geo in
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 32) {
@@ -33,6 +34,12 @@ struct FeedView: View {
                 }
                 .onAppear { scrollToLast(proxy) }
                 .onChange(of: state.feed.count) { scrollToLast(proxy) }
+            }
+            // Ancho del grid = ventana − márgenes (36+36) − columna del prompt (280) − separación (24).
+            .environment(\.feedSpace, FeedSpace(
+                gridWidth: max(200, geo.size.width - 72 - 280 - 24),
+                maxHeight: max(260, geo.size.height - 300)
+            ))
             }
         }
     }

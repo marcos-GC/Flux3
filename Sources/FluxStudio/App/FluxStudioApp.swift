@@ -20,6 +20,7 @@ struct FluxStudioApp: App {
                 .environmentObject(settings)
                 .environmentObject(state)
                 .environmentObject(state.history)
+                .environmentObject(state.preciseEdit)
                 .onAppear { NSApplication.shared.activate(ignoringOtherApps: true) }
         }
         .windowStyle(.hiddenTitleBar)

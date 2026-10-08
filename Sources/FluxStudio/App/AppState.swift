@@ -29,11 +29,13 @@ final class AppState: ObservableObject {
 
     let settings: SettingsStore
     let history: HistoryStore
+    let preciseEdit: PreciseEditModel
     private var tasks: [UUID: [Task<Void, Never>]] = [:]
 
     init(settings: SettingsStore) {
         self.settings = settings
         self.history = HistoryStore(settings: settings)
+        self.preciseEdit = PreciseEditModel()
         imageParams.count = settings.defaultImageCount
         imageParams.safety = SafetyTolerance.clamp(settings.defaultSafety, for: .flux3Image)
     }
@@ -158,50 +160,27 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Ejecuta una petición: enviar → esperar → descargar → guardar.
+    /// Ejecuta una petición del feed y refleja su estado en el hueco correspondiente.
     private func runSlot<Body: Encodable & Sendable>(
         itemID: UUID, slotID: UUID, index: Int, client: BFLClient,
         endpoint: BFLEndpoint, body: Body, prompt: String, parameters: JSONValue, referenceCount: Int
     ) async {
         do {
-            let (submitted, final) = try await client.run(
-                endpoint,
-                body: body,
-                onSubmitted: { [weak self] sub in
-                    await self?.didSubmit(itemID: itemID, slotID: slotID, response: sub)
-                },
-                onUpdate: { [weak self] poll in
-                    await self?.setStatus(itemID: itemID, slotID: slotID, status: poll.status)
+            let output = try await runJob(
+                client: client, endpoint: endpoint, body: body, modelName: endpoint.displayName,
+                prefix: endpoint.filePrefix, index: index, prompt: prompt, sentPrompt: prompt,
+                parameters: parameters, referenceCount: referenceCount
+            ) { [weak self] phase, taskID, cost in
+                self?.updateSlot(itemID, slotID) {
+                    $0.phase = phase
+                    if let taskID { $0.taskID = taskID }
+                    if let cost { $0.cost = cost }
                 }
-            )
-            guard let result = final.result, let url = result.sampleURLs.first else { throw BFLError.noResult }
-
-            updateSlot(itemID, slotID) { $0.phase = .downloading }
-            let download = try await client.download(url)
-            let record = GenerationRecord(
-                taskID: submitted.id,
-                endpoint: endpoint.path,
-                model: endpoint.displayName,
-                prompt: prompt,
-                sentPrompt: prompt,
-                expandedPrompt: result.prompt,
-                parameters: parameters,
-                cost: submitted.cost,
-                inputMP: submitted.inputMP,
-                outputMP: submitted.outputMP,
-                region: settings.region.rawValue,
-                referenceCount: referenceCount
-            )
-            let stored = try ResultStore.save(
-                data: download.data, mimeType: download.mimeType, sourceURL: url,
-                base: settings.outputFolder, prefix: endpoint.filePrefix, index: index, record: record
-            )
-            history.add(stored)
-            let image = NSImage(data: download.data)
+            }
             updateSlot(itemID, slotID) {
-                $0.fileURL = stored.fileURL
-                $0.image = image
-                $0.expandedPrompt = result.prompt
+                $0.fileURL = output.stored.fileURL
+                $0.image = NSImage(data: output.data)
+                $0.expandedPrompt = output.result.prompt
                 $0.phase = .done
             }
         } catch is CancellationError {
@@ -213,17 +192,59 @@ final class AppState: ObservableObject {
         }
     }
 
-    private func didSubmit(itemID: UUID, slotID: UUID, response: SubmitResponse) {
-        sessionCredits += response.cost ?? 0
-        updateSlot(itemID, slotID) {
-            $0.taskID = response.id
-            $0.cost = response.cost
-            $0.phase = .running(.pending)
-        }
+    struct JobOutput {
+        let stored: StoredResult
+        let data: Data
+        let result: PollResult
+        let submitted: SubmitResponse
     }
 
-    private func setStatus(itemID: UUID, slotID: UUID, status: BFLStatus) {
-        updateSlot(itemID, slotID) { $0.phase = .running(status) }
+    typealias JobProgress = @MainActor @Sendable (ResultSlot.Phase, _ taskID: String?, _ cost: Double?) -> Void
+
+    /// Mecanismo común: enviar → esperar → descargar → guardar en disco y en el Historial.
+    func runJob<Body: Encodable & Sendable>(
+        client: BFLClient, endpoint: BFLEndpoint, body: Body, modelName: String, prefix: String,
+        index: Int, prompt: String, sentPrompt: String, parameters: JSONValue, referenceCount: Int,
+        progress: @escaping JobProgress
+    ) async throws -> JobOutput {
+        let (submitted, final) = try await client.run(
+            endpoint,
+            body: body,
+            onSubmitted: { [weak self] sub in
+                await self?.addCredits(sub.cost)
+                await progress(.running(.pending), sub.id, sub.cost)
+            },
+            onUpdate: { poll in
+                await progress(.running(poll.status), nil, nil)
+            }
+        )
+        guard let result = final.result, let url = result.sampleURLs.first else { throw BFLError.noResult }
+        progress(.downloading, nil, nil)
+        let download = try await client.download(url)
+        let record = GenerationRecord(
+            taskID: submitted.id,
+            endpoint: endpoint.path,
+            model: modelName,
+            prompt: prompt,
+            sentPrompt: sentPrompt,
+            expandedPrompt: result.prompt,
+            parameters: parameters,
+            cost: submitted.cost,
+            inputMP: submitted.inputMP,
+            outputMP: submitted.outputMP,
+            region: settings.region.rawValue,
+            referenceCount: referenceCount
+        )
+        let stored = try ResultStore.save(
+            data: download.data, mimeType: download.mimeType, sourceURL: url,
+            base: settings.outputFolder, prefix: prefix, index: index, record: record
+        )
+        history.add(stored)
+        return JobOutput(stored: stored, data: download.data, result: result, submitted: submitted)
+    }
+
+    private func addCredits(_ cost: Double?) {
+        sessionCredits += cost ?? 0
     }
 
     func cancel(itemID: UUID) {
