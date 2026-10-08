@@ -14,7 +14,6 @@ struct WorkspaceView: View {
     @State private var isDropTarget = false
     @State private var compare = false
     @State private var focusedSize: CGSize?
-    @State private var barHeight: CGFloat = 130
 
     var body: some View {
         HStack(spacing: 0) {
@@ -81,36 +80,36 @@ struct WorkspaceView: View {
 
     // MARK: Composición
 
-    /// Imagen centrada y, justo debajo, la línea de información y la caja del prompt.
+    /// Imagen centrada en el espacio libre (con su línea de información debajo)
+    /// y la caja del prompt FIJA en la parte inferior de la ventana.
     private var standardLayout: some View {
-        GeometryReader { geo in
-            let infoHeight: CGFloat = state.focusedURL == nil ? 0 : 34
-            let available = CGSize(
-                width: max(200, geo.size.width - 64),
-                height: max(160, geo.size.height - barHeight - infoHeight - 80)
-            )
-            let stageSize = contentSize.map { fittedSize($0, in: available) }
-                ?? CGSize(width: available.width, height: min(available.height, 320))
+        VStack(spacing: 0) {
+            GeometryReader { geo in
+                let infoHeight: CGFloat = state.focusedURL == nil ? 0 : 34
+                let available = CGSize(
+                    width: max(200, geo.size.width - 64),
+                    height: max(120, geo.size.height - infoHeight - 40)
+                )
+                let stageSize = contentSize.map { fittedSize($0, in: available) }
+                    ?? CGSize(width: available.width, height: min(available.height, 320))
 
-            VStack(spacing: 10) {
-                Spacer(minLength: 24)
-                stage
-                    .frame(width: stageSize.width, height: stageSize.height)
-                if state.focusedURL != nil {
-                    ImageInfoRow(compare: $compare, showsCompare: showsCompare)
-                        .frame(maxWidth: 820)
-                        .padding(.horizontal, 28)
-                        .frame(height: infoHeight)
+                VStack(spacing: 8) {
+                    stage
+                        .frame(width: stageSize.width, height: stageSize.height)
+                    if state.focusedURL != nil {
+                        ImageInfoRow(compare: $compare, showsCompare: showsCompare)
+                            .frame(width: max(stageSize.width, min(available.width, 640)))
+                            .frame(height: infoHeight)
+                    }
                 }
-                bar
-                    .background(GeometryReader { proxy in
-                        Color.clear.preference(key: BarHeightKey.self, value: proxy.size.height)
-                    })
-                Spacer(minLength: 24)
+                .frame(width: geo.size.width, height: geo.size.height)
             }
-            .frame(width: geo.size.width, height: geo.size.height)
+            .padding(.top, 24)
+            .padding(.bottom, 12)
+
+            bar
+                .padding(.bottom, 20)
         }
-        .onPreferenceChange(BarHeightKey.self) { barHeight = $0 }
     }
 
     /// Editar con precisión: lienzo con zoom; barra de regiones y caja del prompt debajo.
@@ -205,13 +204,6 @@ struct WorkspaceView: View {
         case .tryOn: state.tryOn.sync(with: url)
         case .generate, .video: break
         }
-    }
-}
-
-private struct BarHeightKey: PreferenceKey {
-    static let defaultValue: CGFloat = 130
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
     }
 }
 
