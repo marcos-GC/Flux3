@@ -77,6 +77,15 @@ private struct StripThumb: View {
             } else if item.isVideo {
                 Image(systemName: "film").foregroundStyle(Theme.textSecondary)
             }
+            if item.isVideo {
+                Image(systemName: item.record.draftCaches?.isEmpty == false ? "hare.fill" : "play.fill")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.white)
+                    .padding(5)
+                    .background(Circle().fill(Color.black.opacity(0.55)))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .padding(4)
+            }
         }
         .frame(maxWidth: .infinity)
         .aspectRatio(thumbnail.map { $0.size.width / max($0.size.height, 1) } ?? 1, contentMode: .fit)
@@ -90,7 +99,7 @@ private struct StripThumb: View {
         .contextMenu { ResultActions(fileURL: item.fileURL, record: item.record) }
         .onDrag { NSItemProvider(contentsOf: item.fileURL) ?? NSItemProvider() }
         .task(id: item.fileURL) {
-            if !item.isVideo { thumbnail = await ThumbnailLoader.load(item.fileURL, maxPixelSize: 240) }
+            thumbnail = await ThumbnailLoader.load(item.fileURL, maxPixelSize: 240)
         }
     }
 }

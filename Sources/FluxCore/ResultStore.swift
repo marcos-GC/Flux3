@@ -16,12 +16,14 @@ public struct GenerationRecord: Codable, Sendable, Equatable {
     public var region: String
     public var file: String
     public var referenceCount: Int?
+    /// Cachés de borrador de vídeo (para «Renderizar a calidad final»). Caducan en ~1 hora.
+    public var draftCaches: [String]?
 
     public init(
         taskID: String, endpoint: String, model: String, createdAt: Date = Date(),
         prompt: String, sentPrompt: String, expandedPrompt: String? = nil,
         parameters: JSONValue, cost: Double? = nil, inputMP: Double? = nil, outputMP: Double? = nil,
-        region: String, file: String = "", referenceCount: Int? = nil
+        region: String, file: String = "", referenceCount: Int? = nil, draftCaches: [String]? = nil
     ) {
         self.taskID = taskID
         self.endpoint = endpoint
@@ -37,6 +39,7 @@ public struct GenerationRecord: Codable, Sendable, Equatable {
         self.region = region
         self.file = file
         self.referenceCount = referenceCount
+        self.draftCaches = draftCaches
     }
 }
 

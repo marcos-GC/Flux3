@@ -86,6 +86,7 @@ final class AppState: ObservableObject {
     let erase: EraseModel
     let deblur: DeblurModel
     let tryOn: TryOnModel
+    let video: VideoModel
     private var tasks: [UUID: [Task<Void, Never>]] = [:]
 
     init(settings: SettingsStore) {
@@ -96,6 +97,7 @@ final class AppState: ObservableObject {
         self.erase = EraseModel(settings: settings)
         self.deblur = DeblurModel(settings: settings)
         self.tryOn = TryOnModel(settings: settings)
+        self.video = VideoModel(settings: settings)
         imageParams.count = settings.defaultImageCount
         imageParams.safety = SafetyTolerance.clamp(settings.defaultSafety, for: .flux3Image)
     }
@@ -302,7 +304,8 @@ final class AppState: ObservableObject {
             inputMP: submitted.inputMP,
             outputMP: submitted.outputMP,
             region: settings.region.rawValue,
-            referenceCount: referenceCount
+            referenceCount: referenceCount,
+            draftCaches: result.draftCaches.isEmpty ? nil : result.draftCaches
         )
         let stored = try ResultStore.save(
             data: download.data, mimeType: download.mimeType, sourceURL: url,
@@ -386,6 +389,14 @@ final class AppState: ObservableObject {
         case .tryOn: tool = .tryOn
         case .video: tool = .video
         default: tool = .generate
+        }
+        if target == .video {
+            if VideoModel.isVideo(url) {
+                video.mode = .v2v
+            } else {
+                video.mode = .i2v
+                if video.keyframes.isEmpty { video.addKeyframes([url]) }
+            }
         }
         focus(url, tool: tool)
     }

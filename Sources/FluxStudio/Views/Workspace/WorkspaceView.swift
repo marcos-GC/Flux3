@@ -152,8 +152,13 @@ struct WorkspaceView: View {
 
     private func updateFocusedSize() {
         guard let url = state.focusedURL else { focusedSize = nil; return }
-        if ["mp4", "mov"].contains(url.pathExtension.lowercased()) {
+        if VideoModel.isVideo(url) {
             focusedSize = CGSize(width: 16, height: 9)
+            Task {
+                if let info = await VideoInfo.load(url), info.size.width > 0, state.focusedURL == url {
+                    focusedSize = info.size
+                }
+            }
         } else if let px = ImageEncoder.pixelSize(fileURL: url) {
             focusedSize = CGSize(width: px.width, height: px.height)
         } else {
@@ -187,7 +192,7 @@ struct WorkspaceView: View {
         case .tryOn:
             if state.focusedURL != nil { TryOnBar(model: state.tryOn) } else { NeedsImageBar() }
         case .video:
-            VideoComingBar()
+            VideoBar(model: state.video)
         case .edit:
             NeedsImageBar()
         }
@@ -213,20 +218,6 @@ private struct NeedsImageBar: View {
             HStack {
                 Image(systemName: "photo").foregroundStyle(Theme.textSecondary)
                 Text("Elige una imagen de la tira de la derecha, arrastra una aquí o genera una nueva.")
-                    .font(.system(size: 13))
-                    .foregroundStyle(Theme.textSecondary)
-                Spacer()
-            }
-        }
-    }
-}
-
-private struct VideoComingBar: View {
-    var body: some View {
-        ToolBarContainer {
-            HStack {
-                Image(systemName: "film").foregroundStyle(Theme.textSecondary)
-                Text("Vídeo llega en la fase 5: texto a vídeo, imagen a vídeo con la imagen seleccionada, continuar, editar y escalar.")
                     .font(.system(size: 13))
                     .foregroundStyle(Theme.textSecondary)
                 Spacer()
@@ -267,16 +258,32 @@ private struct ImageInfoRow: View {
                     .buttonStyle(.plain)
                     .help("Comparar con la imagen de la que sale este resultado")
                 }
-                if let record {
+                if VideoModel.isVideo(url) {
+                    ForEach([VideoModel.Mode.v2v, .edit, .upscale]) { mode in
+                        Button {
+                            state.video.mode = mode
+                            state.tool = .video
+                        } label: {
+                            Chip(icon: mode.icon, text: mode == .v2v ? "Continuar" : (mode == .edit ? "Editar" : "Escalar"))
+                        }
+                        .buttonStyle(.plain)
+                        .help(mode.title)
+                    }
+                } else if let record {
                     Button { state.reuse(record) } label: { Chip(icon: "arrow.counterclockwise", text: "Reutilizar") }
                         .buttonStyle(.plain)
                         .help("Volver a poner este prompt y sus parámetros en Generar")
                 }
-                Button { state.addReferences([url]); state.tool = .generate } label: {
-                    Chip(icon: "square.on.square", text: "Referencia")
+                if !VideoModel.isVideo(url) {
+                    Button { state.addReferences([url]); state.tool = .generate } label: {
+                        Chip(icon: "square.on.square", text: "Referencia")
+                    }
+                    .buttonStyle(.plain)
+                    .help("Usar esta imagen como referencia para generar")
+                    Button { state.send(url, to: .video) } label: { Chip(icon: "film", text: "A vídeo") }
+                        .buttonStyle(.plain)
+                        .help("Imagen a vídeo con esta imagen como fotograma inicial")
                 }
-                .buttonStyle(.plain)
-                .help("Usar esta imagen como referencia para generar")
                 Button { NSWorkspace.shared.activateFileViewerSelecting([url]) } label: { Chip(icon: "folder", text: "Finder") }
                     .buttonStyle(.plain)
                 Menu { ResultActions(fileURL: url, record: record) } label: { Chip(icon: "ellipsis", text: "Más") }
@@ -295,13 +302,19 @@ private struct FocusedStage: View {
     let compare: Bool
     @State private var image: NSImage?
     @State private var parentImage: NSImage?
+    @State private var player: AVPlayer?
     @State private var fraction: CGFloat = 0.5
 
     var body: some View {
         Group {
             if let url = state.focusedURL {
-                if ["mp4", "mov"].contains(url.pathExtension.lowercased()) {
-                    VideoPlayer(player: AVPlayer(url: url))
+                if VideoModel.isVideo(url) {
+                    if let player {
+                        VideoPlayer(player: player)
+                            .contextMenu { ResultActions(fileURL: url) }
+                    } else {
+                        ShimmerView()
+                    }
                 } else if let image {
                     Group {
                         if compare, let parentImage {
@@ -338,7 +351,13 @@ private struct FocusedStage: View {
         .task(id: state.focusedURL) {
             image = nil
             parentImage = nil
+            player?.pause()
+            player = nil
             guard let url = state.focusedURL else { return }
+            if VideoModel.isVideo(url) {
+                player = AVPlayer(url: url)
+                return
+            }
             image = await ThumbnailLoader.load(url, maxPixelSize: 3000)
             if let parent = state.parent(of: url) {
                 parentImage = await ThumbnailLoader.load(parent, maxPixelSize: 3000)
