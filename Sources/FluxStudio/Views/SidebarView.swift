@@ -25,10 +25,15 @@ struct SidebarView: View {
                     title: tool.title,
                     isSelected: state.mode == .generate && state.tool == tool,
                     disabled: disabled,
-                    help: disabled ? "\(tool.help). Selecciona o genera una imagen primero." : tool.help
+                    help: disabled ? "\(tool.help). Selecciona o genera una imagen primero."
+                        : (tool == .generate ? "Empezar de cero: nueva imagen con FLUX 3 Image" : tool.help)
                 ) {
-                    state.tool = tool
-                    state.mode = .generate
+                    if tool == .generate {
+                        state.startFresh()
+                    } else {
+                        state.tool = tool
+                        state.mode = .generate
+                    }
                 }
             }
 

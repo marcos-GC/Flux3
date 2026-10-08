@@ -372,6 +372,19 @@ final class AppState: ObservableObject {
         mode = .generate
     }
 
+    /// «Generar» desde la barra lateral: empezar de cero (sin imagen, prompt ni referencias,
+    /// con los parámetros por defecto). La tira, el Historial y lo que esté en marcha no se tocan.
+    func startFresh() {
+        focusedURL = nil
+        prompt = ""
+        references.removeAll()
+        imageParams = ImageParams()
+        imageParams.count = settings.defaultImageCount
+        imageParams.safety = SafetyTolerance.clamp(settings.defaultSafety, for: .flux3Image)
+        tool = .generate
+        mode = .generate
+    }
+
     /// Selecciona una imagen en el Estudio (y opcionalmente una herramienta).
     func focus(_ url: URL, tool: WorkspaceTool? = nil) {
         focusedURL = url
