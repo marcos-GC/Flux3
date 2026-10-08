@@ -18,6 +18,19 @@ struct FeedRowView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .surfaceStyle(cornerRadius: 16)
 
+                if !item.referenceThumbnails.isEmpty {
+                    HStack(spacing: 4) {
+                        ForEach(Array(item.referenceThumbnails.enumerated()), id: \.offset) { _, thumb in
+                            Image(nsImage: thumb)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 26, height: 26)
+                                .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+                        }
+                    }
+                    .help("Imágenes de referencia usadas")
+                }
+
                 HStack(spacing: 6) {
                     Text(item.modelName)
                         .font(.system(size: 11, weight: .medium))
@@ -77,7 +90,7 @@ private struct ResultGrid: View {
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             ForEach(item.slots) { slot in
-                ResultCell(slot: slot, size: cellSize)
+                ResultCell(slot: slot, size: cellSize, prompt: item.prompt)
             }
         }
     }
@@ -86,6 +99,7 @@ private struct ResultGrid: View {
 private struct ResultCell: View {
     let slot: ResultSlot
     let size: CGSize
+    let prompt: String
 
     var body: some View {
         Group {
@@ -99,18 +113,7 @@ private struct ResultCell: View {
                         .clipShape(RoundedRectangle(cornerRadius: Theme.cornerResult, style: .continuous))
                         .onDrag { NSItemProvider(contentsOf: url) ?? NSItemProvider() }
                         .contextMenu {
-                            Button("Mostrar en Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
-                            Button("Abrir") { NSWorkspace.shared.open(url) }
-                            Button("Copiar imagen") {
-                                NSPasteboard.general.clearContents()
-                                NSPasteboard.general.writeObjects([image])
-                            }
-                            if let expanded = slot.expandedPrompt {
-                                Button("Copiar prompt expandido") {
-                                    NSPasteboard.general.clearContents()
-                                    NSPasteboard.general.setString(expanded, forType: .string)
-                                }
-                            }
+                            ResultActions(fileURL: url, prompt: prompt, expandedPrompt: slot.expandedPrompt)
                         }
                         .help(slot.expandedPrompt ?? "")
                 } else {

@@ -53,3 +53,25 @@ public struct Flux3ImageRequest: Encodable, Sendable, Equatable {
         self.grounding = grounding ? nil : false
     }
 }
+
+/// Ajustes de FLUX 3 Image recuperados de los parámetros guardados en un .json
+/// (para "Reutilizar parámetros"). Los campos que no se enviaron toman su valor por defecto.
+public struct Flux3ImageSettings: Equatable, Sendable {
+    public var aspectRatio = "auto"
+    public var resolution = "1k"
+    public var safetyTolerance = SafetyTolerance.defaultValue
+    public var grounding = true
+
+    public init() {}
+
+    public init(parameters: JSONValue) {
+        aspectRatio = parameters["aspect_ratio"]?.stringValue ?? "auto"
+        resolution = parameters["resolution"]?.stringValue ?? "1k"
+        if let n = parameters["safety_tolerance"]?.numberValue {
+            safetyTolerance = SafetyTolerance.clamp(Int(n), for: .flux3Image)
+        }
+        if case .bool(let b)? = parameters["grounding"] {
+            grounding = b
+        }
+    }
+}

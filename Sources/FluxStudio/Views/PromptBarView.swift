@@ -9,6 +9,9 @@ struct PromptBarView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            if !state.references.isEmpty {
+                ReferenceTray()
+            }
             TextField("Describe la imagen que quieres generar…", text: $state.prompt, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(.system(size: 14))
@@ -22,9 +25,18 @@ struct PromptBarView: View {
                 Chip(icon: "photo", text: BFLEndpoint.flux3Image.displayName)
                     .help("Modelo")
 
-                Chip(icon: "square.on.square", text: "Referencias")
-                    .opacity(0.5)
-                    .help("Imágenes de referencia: llega en la fase 2")
+                Button {
+                    state.addReferences(chooseImages())
+                } label: {
+                    Chip(
+                        icon: "square.on.square",
+                        text: state.references.isEmpty ? "Referencias" : "Referencias · \(state.references.count)",
+                        isActive: !state.references.isEmpty
+                    )
+                }
+                .buttonStyle(.plain)
+                .disabled(state.references.count >= 10)
+                .help("Añade hasta 10 imágenes de referencia (también puedes arrastrarlas aquí)")
 
                 ChipPicker(
                     icon: "aspectratio",

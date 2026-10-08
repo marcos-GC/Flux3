@@ -46,6 +46,7 @@ struct FeedItem: Identifiable {
     let prompt: String
     let modelName: String
     let aspectRatio: Double
+    var referenceThumbnails: [NSImage] = []
     let createdAt = Date()
     var slots: [ResultSlot]
 

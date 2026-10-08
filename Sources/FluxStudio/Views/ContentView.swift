@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct ContentView: View {
@@ -37,6 +38,8 @@ struct ContentView: View {
             GenerateView()
         case .settings:
             SettingsView()
+        case .history:
+            HistoryView()
         default:
             PlaceholderView(mode: state.mode)
         }
@@ -45,10 +48,28 @@ struct ContentView: View {
 
 /// Pantalla provisional para los modos que llegan en fases posteriores.
 struct PlaceholderView: View {
+    @EnvironmentObject private var state: AppState
     let mode: AppMode
+    @State private var thumbnail: NSImage?
 
     var body: some View {
         VStack(spacing: 12) {
+            if let handoff = state.handoff, handoff.mode == mode {
+                Group {
+                    if let thumbnail {
+                        Image(nsImage: thumbnail).resizable().scaledToFit()
+                    } else {
+                        ShimmerView()
+                    }
+                }
+                .frame(width: 220, height: 160)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.cornerResult, style: .continuous))
+                .task(id: handoff.fileURL) { thumbnail = await ThumbnailLoader.load(handoff.fileURL, maxPixelSize: 440) }
+                Text("Imagen preparada: \(handoff.fileURL.lastPathComponent)")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.textSecondary)
+                    .padding(.bottom, 8)
+            }
             Image(systemName: mode.icon)
                 .font(.system(size: 34, weight: .light))
                 .foregroundStyle(Theme.textSecondary)
