@@ -27,7 +27,8 @@ Descarga la última versión, la copia a **Aplicaciones** y la abre. Así macOS 
 1. Abre **Ajustes** (rueda dentada, abajo a la izquierda).
 2. Pega tu API key de Black Forest Labs (https://dashboard.bfl.ai → API Keys) y pulsa **Guardar en el Llavero**.
 3. Pulsa **Probar conexión**. Debería mostrar tu saldo de créditos.
-4. Si macOS pregunta si FLUX Studio puede usar el Llavero, pulsa **Permitir siempre**.
+4. La primera vez que generes algo, macOS pedirá permiso para que FLUX Studio lea la clave del Llavero. Escribe **la contraseña de tu Mac** (no la API key) y pulsa **Permitir siempre**. Si pulsas solo «Permitir», volverá a preguntar en cada sesión.
+   Tras instalar una versión nueva de la app, macOS lo pregunta una vez más: es normal, porque la app no está firmada con un certificado de pago de Apple.
 
 ## Dónde se guardan los archivos
 

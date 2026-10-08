@@ -31,6 +31,16 @@ enum KeychainService {
         guard status == errSecSuccess else { throw KeychainError(status: status) }
     }
 
+    /// Comprueba si hay una clave guardada SIN leer su contenido
+    /// (leer solo los atributos no hace que macOS pida permiso).
+    static func hasAPIKey() -> Bool {
+        var query = baseQuery
+        query[kSecReturnAttributes as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        return SecItemCopyMatching(query as CFDictionary, nil) == errSecSuccess
+    }
+
+    /// Lee la clave. La primera vez macOS puede pedir permiso («Permitir siempre» lo recuerda).
     static func loadAPIKey() -> String? {
         var query = baseQuery
         query[kSecReturnData as String] = true

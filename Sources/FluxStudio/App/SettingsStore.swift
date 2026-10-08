@@ -54,22 +54,33 @@ final class SettingsStore: ObservableObject {
         defaultSafety = defaults.object(forKey: Keys.safety) as? Int ?? SafetyTolerance.defaultValue
         let count = defaults.integer(forKey: Keys.count)
         defaultImageCount = (1...4).contains(count) ? count : 1
-        hasAPIKey = !(KeychainService.loadAPIKey() ?? "").isEmpty
+        // Al abrir la app solo se comprueba que exista la clave, sin leerla:
+        // así macOS no pide la contraseña del Llavero al arrancar.
+        hasAPIKey = KeychainService.hasAPIKey()
     }
 
+    /// La clave se lee del Llavero una sola vez por sesión y se guarda en memoria (nunca en disco).
+    private var cachedAPIKey: String?
+
     func saveAPIKey(_ key: String) throws {
-        try KeychainService.saveAPIKey(key.trimmingCharacters(in: .whitespacesAndNewlines))
+        let clean = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        try KeychainService.saveAPIKey(clean)
+        cachedAPIKey = clean
         hasAPIKey = true
     }
 
     func deleteAPIKey() {
         KeychainService.deleteAPIKey()
+        cachedAPIKey = nil
         hasAPIKey = false
     }
 
     /// Cliente listo para usar, o error si falta la clave.
     func makeClient() throws -> BFLClient {
-        guard let key = KeychainService.loadAPIKey(), !key.isEmpty else { throw BFLError.missingAPIKey }
+        if cachedAPIKey == nil {
+            cachedAPIKey = KeychainService.loadAPIKey()
+        }
+        guard let key = cachedAPIKey, !key.isEmpty else { throw BFLError.missingAPIKey }
         return BFLClient(apiKey: key, region: region)
     }
 }
