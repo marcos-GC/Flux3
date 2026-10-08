@@ -79,6 +79,15 @@ struct VideoBar: View {
                         .frame(width: 320)
                 }
 
+                PromptEnhanceButton(text: $model.prompt) {
+                    PromptEnhancer.Context(
+                        kind: .video,
+                        aspectRatio: model.aspectRatio,
+                        videoMode: model.mode.title,
+                        keyframeCount: model.mode == .i2v ? model.keyframes.count : 0
+                    )
+                }
+
                 Spacer(minLength: 4)
                 ToolGenerateControls(runner: runner, enabled: canGenerate) {
                     model.generate(state: state, focused: state.focusedURL)

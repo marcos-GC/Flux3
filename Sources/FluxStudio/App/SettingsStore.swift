@@ -28,6 +28,7 @@ final class SettingsStore: ObservableObject {
         didSet { defaults.set(defaultImageCount, forKey: Keys.count) }
     }
     @Published private(set) var hasAPIKey: Bool
+    @Published private(set) var hasAnthropicKey: Bool
 
     private enum Keys {
         static let region = "region"
@@ -57,6 +58,32 @@ final class SettingsStore: ObservableObject {
         // Al abrir la app solo se comprueba que exista la clave, sin leerla:
         // así macOS no pide la contraseña del Llavero al arrancar.
         hasAPIKey = KeychainService.hasAPIKey()
+        hasAnthropicKey = KeychainService.hasAPIKey(account: KeychainService.anthropicAccount)
+    }
+
+    // MARK: API key de Anthropic (para «Mejorar» prompts con Claude Haiku)
+
+    private var cachedAnthropicKey: String?
+
+    func saveAnthropicKey(_ key: String) throws {
+        let clean = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        try KeychainService.saveAPIKey(clean, account: KeychainService.anthropicAccount)
+        cachedAnthropicKey = clean
+        hasAnthropicKey = true
+    }
+
+    func deleteAnthropicKey() {
+        KeychainService.deleteAPIKey(account: KeychainService.anthropicAccount)
+        cachedAnthropicKey = nil
+        hasAnthropicKey = false
+    }
+
+    func anthropicKey() throws -> String {
+        if cachedAnthropicKey == nil {
+            cachedAnthropicKey = KeychainService.loadAPIKey(account: KeychainService.anthropicAccount)
+        }
+        guard let key = cachedAnthropicKey, !key.isEmpty else { throw PromptEnhancer.EnhanceError.missingKey }
+        return key
     }
 
     /// La clave se lee del Llavero una sola vez por sesión y se guarda en memoria (nunca en disco).

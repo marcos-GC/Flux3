@@ -72,6 +72,14 @@ struct PromptBarView: View {
                         .environmentObject(state)
                 }
 
+                PromptEnhanceButton(text: $state.prompt) {
+                    PromptEnhancer.Context(
+                        kind: .image,
+                        referenceCount: state.references.count,
+                        aspectRatio: state.imageParams.aspectRatio
+                    )
+                }
+
                 Spacer(minLength: 8)
 
                 if state.isGenerating {

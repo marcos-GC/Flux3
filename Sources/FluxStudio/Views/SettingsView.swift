@@ -10,6 +10,10 @@ struct SettingsView: View {
     @State private var keyMessage: String?
     @State private var keyMessageIsError = false
     @State private var testing = false
+    @State private var claudeKeyInput = ""
+    @State private var claudeMessage: String?
+    @State private var claudeMessageIsError = false
+    @State private var claudeTesting = false
 
     var body: some View {
         ScrollView {
@@ -52,6 +56,52 @@ struct SettingsView: View {
                         Text(keyMessage)
                             .font(.system(size: 12))
                             .foregroundStyle(keyMessageIsError ? Theme.danger : Theme.textSecondary)
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                card {
+                    SectionLabel("Mejorar prompts con Claude (opcional)")
+                    Text("El botón «Mejorar» de la caja del prompt usa Claude Haiku para reescribir tu idea siguiendo las guías de FLUX 3. Necesita una API key de Anthropic (console.anthropic.com → API Keys). Cada mejora cuesta décimas de céntimo.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 6) {
+                        Image(systemName: settings.hasAnthropicKey ? "checkmark.seal.fill" : "circle.dashed")
+                            .foregroundStyle(settings.hasAnthropicKey ? Color.green : Theme.textSecondary)
+                        Text(settings.hasAnthropicKey ? "Hay una clave de Anthropic guardada en el Llavero." : "Sin clave de Anthropic.")
+                            .font(.system(size: 13))
+                    }
+                    SecureField("Pega aquí tu API key de Anthropic (sk-ant-…)", text: $claudeKeyInput)
+                        .textFieldStyle(.roundedBorder)
+                    HStack {
+                        Button("Guardar en el Llavero") {
+                            do {
+                                try settings.saveAnthropicKey(claudeKeyInput)
+                                claudeKeyInput = ""
+                                showClaude("Clave guardada. Pulsa «Probar» para comprobarla.", error: false)
+                            } catch {
+                                showClaude(error.localizedDescription, error: true)
+                            }
+                        }
+                        .disabled(claudeKeyInput.trimmingCharacters(in: .whitespaces).isEmpty)
+                        Button(action: testClaude) {
+                            if claudeTesting { ProgressView().controlSize(.small) } else { Text("Probar") }
+                        }
+                        .disabled(!settings.hasAnthropicKey || claudeTesting)
+                        Spacer()
+                        if settings.hasAnthropicKey {
+                            Button("Borrar clave", role: .destructive) {
+                                settings.deleteAnthropicKey()
+                                showClaude("Clave de Anthropic borrada.", error: false)
+                            }
+                        }
+                    }
+                    if let claudeMessage {
+                        Text(claudeMessage)
+                            .font(.system(size: 12))
+                            .foregroundStyle(claudeMessageIsError ? Theme.danger : Theme.textSecondary)
                             .textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -154,6 +204,24 @@ struct SettingsView: View {
                 }
             } catch {
                 show(error.localizedDescription, error: true)
+            }
+        }
+    }
+
+    private func showClaude(_ text: String, error: Bool) {
+        claudeMessage = text
+        claudeMessageIsError = error
+    }
+
+    private func testClaude() {
+        claudeTesting = true
+        Task {
+            defer { claudeTesting = false }
+            do {
+                try await PromptEnhancer.testKey(try settings.anthropicKey())
+                showClaude("Conexión correcta: Claude Haiku está disponible.", error: false)
+            } catch {
+                showClaude(error.localizedDescription, error: true)
             }
         }
     }
