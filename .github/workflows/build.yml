@@ -11,6 +11,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # para numerar la versión
 
       - name: Versión de Swift y Xcode
         run: |
@@ -23,12 +25,15 @@ jobs:
       - name: Tests
         run: swift test
 
-      - name: Montar la app (.app)
-        run: INSTALL_DIR="$RUNNER_TEMP/apps" ./build_app.sh --no-open
+      - name: Crear el instalador (.dmg)
+        run: ./make_dmg.sh
 
-      - name: Comprobar que la app arranca
+      - name: Comprobar que la app del instalador arranca
         run: |
-          "$RUNNER_TEMP/apps/FLUX Studio.app/Contents/MacOS/FluxStudio" &
+          hdiutil attach dist/FLUX-Studio.dmg -nobrowse -mountpoint "$RUNNER_TEMP/dmg"
+          test -L "$RUNNER_TEMP/dmg/Aplicaciones"
+          test -f "$RUNNER_TEMP/dmg/FLUX Studio.app/Contents/Resources/AppIcon.icns"
+          "$RUNNER_TEMP/dmg/FLUX Studio.app/Contents/MacOS/FluxStudio" &
           PID=$!
           sleep 8
           if kill -0 $PID 2>/dev/null; then
@@ -37,12 +42,10 @@ jobs:
           else
             wait $PID; echo "La app se ha cerrado sola (código $?)"; exit 1
           fi
-
-      - name: Empaquetar
-        run: cd "$RUNNER_TEMP/apps" && ditto -c -k --keepParent "FLUX Studio.app" "$GITHUB_WORKSPACE/FLUX-Studio.zip"
+          hdiutil detach "$RUNNER_TEMP/dmg"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: FLUX-Studio
-          path: FLUX-Studio.zip
-          retention-days: 14
+          name: FLUX-Studio-instalador
+          path: dist/FLUX-Studio.dmg
+          retention-days: 30
