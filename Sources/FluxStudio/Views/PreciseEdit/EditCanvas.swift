@@ -12,7 +12,7 @@ struct EditCanvas: View {
     @State private var compareFraction: CGFloat = 0.5
 
     /// Márgenes que dejan sitio a las barras flotantes.
-    private let insets = EdgeInsets(top: 76, leading: 40, bottom: 260, trailing: 40)
+    private let insets = EdgeInsets(top: 28, leading: 40, bottom: 270, trailing: 40)
 
     var body: some View {
         GeometryReader { geo in
@@ -57,10 +57,6 @@ struct EditCanvas: View {
                         }
                     }
 
-                    ZoomControls(fitScale: layout.fitScale)
-                        .fixedSize()
-                        .frame(width: geo.size.width - 20, alignment: .trailing)
-                        .offset(y: 18)
                 }
                 .coordinateSpace(name: "canvas")
                 .clipped()
@@ -126,7 +122,7 @@ struct EditCanvas: View {
         var x = box.maxX + 14
         if x + width > container.width - 12 { x = box.minX - width - 14 }
         x = min(max(12, x), container.width - width - 12)
-        let y = min(max(76, box.minY), container.height - height - 250)
+        let y = min(max(16, box.minY), container.height - height - 260)
         return CGSize(width: x, height: y)
     }
 
@@ -379,14 +375,14 @@ struct BoxEditor: View {
 
 // MARK: - Zoom
 
-private struct ZoomControls: View {
+/// Zoom del lienzo (100 % = imagen ajustada a la ventana).
+struct ZoomControls: View {
     @EnvironmentObject private var model: PreciseEditModel
-    let fitScale: CGFloat
 
     var body: some View {
         HStack(spacing: 2) {
             button("minus") { model.zoom = max(0.2, model.zoom / 1.25) }
-            Text("\(Int((fitScale * model.zoom * 100).rounded()))%")
+            Text("\(Int((model.zoom * 100).rounded()))%")
                 .font(.system(size: 11, weight: .medium))
                 .monospacedDigit()
                 .frame(width: 46)
@@ -397,9 +393,7 @@ private struct ZoomControls: View {
                 .font(.system(size: 11, weight: .medium))
                 .padding(.trailing, 6)
         }
-        .padding(4)
         .foregroundStyle(Theme.textPrimary)
-        .surfaceStyle(cornerRadius: 14)
         .help("Zoom: ⌘ + rueda o pellizco. Desplazar: espacio + arrastrar, o dos dedos en el trackpad.")
     }
 

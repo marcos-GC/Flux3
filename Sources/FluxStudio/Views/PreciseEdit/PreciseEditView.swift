@@ -106,6 +106,9 @@ struct EditToolbar: View {
                     .disabled(model.currentIndex >= model.versions.count - 1)
                     .padding(.trailing, 6)
             }
+
+            divider
+            ZoomControls()
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 5)

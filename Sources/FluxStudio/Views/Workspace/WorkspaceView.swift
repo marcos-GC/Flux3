@@ -12,6 +12,9 @@ struct WorkspaceView: View {
     @State private var showPrompt = false
     @State private var confirmReset = false
     @State private var isDropTarget = false
+    @State private var compare = false
+    @State private var focusedSize: CGSize?
+    @State private var barHeight: CGFloat = 130
 
     var body: some View {
         HStack(spacing: 0) {
@@ -50,8 +53,13 @@ struct WorkspaceView: View {
         .onAppear {
             history.reload()
             syncTool()
+            updateFocusedSize()
         }
-        .onChange(of: state.focusedURL) { syncTool() }
+        .onChange(of: state.focusedURL) {
+            compare = false
+            syncTool()
+            updateFocusedSize()
+        }
         .onChange(of: state.tool) { syncTool() }
         .onChange(of: preciseEdit.currentIndex) {
             // Navegar entre versiones en Editar también cambia la imagen seleccionada.
@@ -73,24 +81,39 @@ struct WorkspaceView: View {
 
     // MARK: Composición
 
-    /// Generar, Borrar, Ampliar, Deblur, Probador y Vídeo: cabecera, escenario y barra.
+    /// Imagen centrada y, justo debajo, la línea de información y la caja del prompt.
     private var standardLayout: some View {
-        VStack(spacing: 0) {
-            FocusedHeader()
-                .padding(.top, 30)
-                .padding(.horizontal, 28)
-            stage
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .padding(.horizontal, 32)
-                .padding(.vertical, 12)
-            ToolSwitcher()
-                .padding(.bottom, 10)
-            bar
-                .padding(.bottom, 20)
+        GeometryReader { geo in
+            let infoHeight: CGFloat = state.focusedURL == nil ? 0 : 34
+            let available = CGSize(
+                width: max(200, geo.size.width - 64),
+                height: max(160, geo.size.height - barHeight - infoHeight - 80)
+            )
+            let stageSize = contentSize.map { fittedSize($0, in: available) }
+                ?? CGSize(width: available.width, height: min(available.height, 320))
+
+            VStack(spacing: 10) {
+                Spacer(minLength: 24)
+                stage
+                    .frame(width: stageSize.width, height: stageSize.height)
+                if state.focusedURL != nil {
+                    ImageInfoRow(compare: $compare, showsCompare: showsCompare)
+                        .frame(maxWidth: 820)
+                        .padding(.horizontal, 28)
+                        .frame(height: infoHeight)
+                }
+                bar
+                    .background(GeometryReader { proxy in
+                        Color.clear.preference(key: BarHeightKey.self, value: proxy.size.height)
+                    })
+                Spacer(minLength: 24)
+            }
+            .frame(width: geo.size.width, height: geo.size.height)
         }
+        .onPreferenceChange(BarHeightKey.self) { barHeight = $0 }
     }
 
-    /// Editar con precisión: lienzo a pantalla completa con barras flotantes.
+    /// Editar con precisión: lienzo con zoom; barra de regiones y caja del prompt debajo.
     private var editLayout: some View {
         ZStack {
             if preciseEdit.current != nil {
@@ -98,20 +121,44 @@ struct WorkspaceView: View {
             } else {
                 ToolLoadingView(isLoading: true, error: preciseEdit.loadError)
             }
-            VStack(spacing: 0) {
-                EditToolbar(confirmReset: $confirmReset)
-                    .padding(.top, 18)
+            VStack(spacing: 8) {
                 Spacer()
                 if showPrompt {
                     PromptPanel()
-                        .padding(.bottom, 8)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
-                ToolSwitcher()
-                    .padding(.bottom, 10)
+                EditToolbar(confirmReset: $confirmReset)
                 PreciseEditBar(showPrompt: $showPrompt)
                     .padding(.bottom, 20)
             }
+        }
+    }
+
+    /// Tamaño (proporción) de lo que se muestra en el escenario.
+    private var contentSize: CGSize? {
+        guard state.focusedURL != nil else { return nil }
+        switch state.tool {
+        case .erase: return state.erase.input?.size ?? focusedSize
+        case .outpaint:
+            guard state.outpaint.input != nil else { return focusedSize }
+            // Deja sitio al texto con el tamaño del lienzo.
+            return CGSize(width: state.outpaint.canvasSize.width, height: state.outpaint.canvasSize.height * 1.08)
+        default: return focusedSize
+        }
+    }
+
+    private var showsCompare: Bool {
+        state.tool != .erase && state.tool != .outpaint && state.parent(of: state.focusedURL) != nil
+    }
+
+    private func updateFocusedSize() {
+        guard let url = state.focusedURL else { focusedSize = nil; return }
+        if ["mp4", "mov"].contains(url.pathExtension.lowercased()) {
+            focusedSize = CGSize(width: 16, height: 9)
+        } else if let px = ImageEncoder.pixelSize(fileURL: url) {
+            focusedSize = CGSize(width: px.width, height: px.height)
+        } else {
+            focusedSize = nil
         }
     }
 
@@ -123,7 +170,7 @@ struct WorkspaceView: View {
         case .outpaint where state.focusedURL != nil:
             OutpaintStage(model: state.outpaint)
         default:
-            FocusedStage()
+            FocusedStage(compare: compare)
         }
     }
 
@@ -161,34 +208,10 @@ struct WorkspaceView: View {
     }
 }
 
-// MARK: - Selector de herramientas
-
-struct ToolSwitcher: View {
-    @EnvironmentObject private var state: AppState
-
-    var body: some View {
-        HStack(spacing: 2) {
-            ForEach(WorkspaceTool.allCases) { tool in
-                let disabled = tool.needsImage && state.focusedURL == nil
-                Button { state.tool = tool } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: tool.icon).font(.system(size: 12))
-                        Text(tool.title).font(.system(size: 12, weight: .medium))
-                    }
-                    .padding(.horizontal, 11)
-                    .padding(.vertical, 6)
-                    .foregroundStyle(state.tool == tool ? Color.white : Theme.textPrimary)
-                    .background(Capsule().fill(state.tool == tool ? Theme.action : .clear))
-                    .contentShape(Capsule())
-                }
-                .buttonStyle(.plain)
-                .disabled(disabled)
-                .opacity(disabled ? 0.35 : 1)
-                .help(disabled ? "Selecciona o genera una imagen primero" : tool.help)
-            }
-        }
-        .padding(4)
-        .surfaceStyle(cornerRadius: 20)
+private struct BarHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 130
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }
 
@@ -220,49 +243,56 @@ private struct VideoComingBar: View {
     }
 }
 
-// MARK: - Cabecera de la imagen seleccionada
+// MARK: - Línea de información bajo la imagen
 
-private struct FocusedHeader: View {
+private struct ImageInfoRow: View {
     @EnvironmentObject private var state: AppState
     @EnvironmentObject private var history: HistoryStore
+    @Binding var compare: Bool
+    let showsCompare: Bool
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             if let url = state.focusedURL {
                 let record = history.items.first { $0.fileURL == url }?.record
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 1) {
                     Text(record?.prompt ?? url.lastPathComponent)
-                        .font(.system(size: 13))
+                        .font(.system(size: 12))
                         .foregroundStyle(Theme.textPrimary)
                         .lineLimit(1)
                         .truncationMode(.tail)
                         .help(record?.prompt ?? url.path)
-                    Text([record?.model, record.map { $0.createdAt.formatted(date: .abbreviated, time: .shortened) },
-                          record?.cost.map { "\(formatCredits($0)) créditos" }]
+                    Text([record?.model, record?.cost.map { "\(formatCredits($0)) créditos" }]
                         .compactMap { $0 }.joined(separator: " · "))
-                        .font(.system(size: 11))
+                        .font(.system(size: 10))
                         .foregroundStyle(Theme.textSecondary)
                 }
-                Spacer(minLength: 12)
-                if let record {
-                    Button { state.reuse(record) } label: { Chip(icon: "arrow.counterclockwise", text: "Reutilizar prompt") }
-                        .buttonStyle(.plain)
+                Spacer(minLength: 10)
+                if showsCompare {
+                    Button { compare.toggle() } label: {
+                        Chip(icon: "rectangle.split.2x1", text: "Antes / Después", isActive: compare)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Comparar con la imagen de la que sale este resultado")
                 }
-                Button { state.addReferences([url]) ; state.tool = .generate } label: {
-                    Chip(icon: "square.on.square", text: "Usar como referencia")
+                if let record {
+                    Button { state.reuse(record) } label: { Chip(icon: "arrow.counterclockwise", text: "Reutilizar") }
+                        .buttonStyle(.plain)
+                        .help("Volver a poner este prompt y sus parámetros en Generar")
+                }
+                Button { state.addReferences([url]); state.tool = .generate } label: {
+                    Chip(icon: "square.on.square", text: "Referencia")
                 }
                 .buttonStyle(.plain)
+                .help("Usar esta imagen como referencia para generar")
                 Button { NSWorkspace.shared.activateFileViewerSelecting([url]) } label: { Chip(icon: "folder", text: "Finder") }
                     .buttonStyle(.plain)
                 Menu { ResultActions(fileURL: url, record: record) } label: { Chip(icon: "ellipsis", text: "Más") }
                     .menuStyle(.borderlessButton)
                     .menuIndicator(.hidden)
                     .fixedSize()
-            } else {
-                Spacer()
             }
         }
-        .frame(height: 36)
     }
 }
 
@@ -270,9 +300,9 @@ private struct FocusedHeader: View {
 
 private struct FocusedStage: View {
     @EnvironmentObject private var state: AppState
+    let compare: Bool
     @State private var image: NSImage?
     @State private var parentImage: NSImage?
-    @State private var compare = false
     @State private var fraction: CGFloat = 0.5
 
     var body: some View {
@@ -280,41 +310,21 @@ private struct FocusedStage: View {
             if let url = state.focusedURL {
                 if ["mp4", "mov"].contains(url.pathExtension.lowercased()) {
                     VideoPlayer(player: AVPlayer(url: url))
-                        .clipShape(RoundedRectangle(cornerRadius: Theme.cornerResult, style: .continuous))
                 } else if let image {
-                    GeometryReader { geo in
-                        let size = fittedSize(image.size, in: CGSize(width: geo.size.width, height: geo.size.height - 40))
-                        VStack(spacing: 10) {
-                            Group {
-                                if compare, let parentImage {
-                                    CompareView(before: parentImage, after: image, fraction: $fraction)
-                                } else {
-                                    Image(nsImage: image)
-                                        .resizable()
-                                        .interpolation(.high)
-                                        .onDrag { NSItemProvider(contentsOf: url) ?? NSItemProvider() }
-                                }
-                            }
-                            .frame(width: size.width, height: size.height)
-                            .clipShape(RoundedRectangle(cornerRadius: Theme.cornerResult, style: .continuous))
-                            .shadow(color: .black.opacity(0.08), radius: 14, y: 4)
-                            .contextMenu { ResultActions(fileURL: url) }
-                            .onTapGesture(count: 2) { NSWorkspace.shared.open(url) }
-
-                            if parentImage != nil {
-                                Button { compare.toggle() } label: {
-                                    Chip(icon: "rectangle.split.2x1", text: "Antes / Después", isActive: compare)
-                                }
-                                .buttonStyle(.plain)
-                                .help("Comparar con la imagen de la que sale este resultado")
-                            } else {
-                                Color.clear.frame(height: 28)
-                            }
+                    Group {
+                        if compare, let parentImage {
+                            CompareView(before: parentImage, after: image, fraction: $fraction)
+                        } else {
+                            Image(nsImage: image)
+                                .resizable()
+                                .interpolation(.high)
+                                .onDrag { NSItemProvider(contentsOf: url) ?? NSItemProvider() }
                         }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
+                    .contextMenu { ResultActions(fileURL: url) }
+                    .onTapGesture(count: 2) { NSWorkspace.shared.open(url) }
                 } else {
-                    ProgressView()
+                    ShimmerView()
                 }
             } else {
                 VStack(spacing: 10) {
@@ -328,13 +338,14 @@ private struct FocusedStage: View {
                         .font(.system(size: 12))
                         .foregroundStyle(Theme.textSecondary)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.cornerResult, style: .continuous))
+        .shadow(color: .black.opacity(state.focusedURL == nil ? 0 : 0.08), radius: 14, y: 4)
         .task(id: state.focusedURL) {
             image = nil
             parentImage = nil
-            compare = false
             guard let url = state.focusedURL else { return }
             image = await ThumbnailLoader.load(url, maxPixelSize: 3000)
             if let parent = state.parent(of: url) {
