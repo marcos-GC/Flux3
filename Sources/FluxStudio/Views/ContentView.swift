@@ -42,6 +42,14 @@ struct ContentView: View {
             HistoryView()
         case .preciseEdit:
             PreciseEditView()
+        case .outpaint:
+            OutpaintView(model: state.outpaint)
+        case .erase:
+            EraseView(model: state.erase)
+        case .deblur:
+            DeblurView(model: state.deblur)
+        case .tryOn:
+            TryOnView(model: state.tryOn)
         default:
             PlaceholderView(mode: state.mode)
         }

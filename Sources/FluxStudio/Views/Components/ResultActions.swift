@@ -29,6 +29,8 @@ struct ResultActions: View {
             Button("Editar con precisión") { state.send(fileURL, to: .preciseEdit) }
             Button("Outpainting") { state.send(fileURL, to: .outpaint) }
             Button("Borrar") { state.send(fileURL, to: .erase) }
+            Button("Deblur") { state.send(fileURL, to: .deblur) }
+            Button("Probador virtual (como persona)") { state.send(fileURL, to: .tryOn) }
             Button("Imagen a vídeo") { state.send(fileURL, to: .video) }
         }
     }

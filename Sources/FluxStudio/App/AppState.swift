@@ -30,12 +30,20 @@ final class AppState: ObservableObject {
     let settings: SettingsStore
     let history: HistoryStore
     let preciseEdit: PreciseEditModel
+    let outpaint: OutpaintModel
+    let erase: EraseModel
+    let deblur: DeblurModel
+    let tryOn: TryOnModel
     private var tasks: [UUID: [Task<Void, Never>]] = [:]
 
     init(settings: SettingsStore) {
         self.settings = settings
         self.history = HistoryStore(settings: settings)
         self.preciseEdit = PreciseEditModel()
+        self.outpaint = OutpaintModel(settings: settings)
+        self.erase = EraseModel(settings: settings)
+        self.deblur = DeblurModel(settings: settings)
+        self.tryOn = TryOnModel(settings: settings)
         imageParams.count = settings.defaultImageCount
         imageParams.safety = SafetyTolerance.clamp(settings.defaultSafety, for: .flux3Image)
     }
