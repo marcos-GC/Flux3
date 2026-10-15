@@ -2,62 +2,6 @@ import AppKit
 import FluxCore
 import SwiftUI
 
-/// Zona para elegir la imagen de entrada: botón, arrastrar y soltar, o Historial.
-struct ToolDropZone: View {
-    @EnvironmentObject private var history: HistoryStore
-    let title: String
-    var subtitle = "o arrastra una imagen aquí"
-    var compact = false
-    let onPick: (URL) -> Void
-    @State private var isDropTarget = false
-    @State private var showHistory = false
-
-    var body: some View {
-        VStack(spacing: compact ? 8 : 14) {
-            Image(systemName: "photo.badge.plus")
-                .font(.system(size: compact ? 22 : 32, weight: .light))
-                .foregroundStyle(Theme.textSecondary)
-            Button {
-                if let url = chooseImages(allowsMultiple: false).first { onPick(url) }
-            } label: {
-                Text(title)
-                    .font(.system(size: compact ? 12 : 14, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, compact ? 16 : 24)
-                    .padding(.vertical, compact ? 7 : 10)
-                    .background(Capsule().fill(Theme.action))
-            }
-            .buttonStyle(.plain)
-            Text(subtitle).font(.system(size: 11)).foregroundStyle(Theme.textSecondary)
-            Button("Usar una imagen del historial") { showHistory = true }
-                .buttonStyle(.plain)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(Theme.textPrimary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(isDropTarget ? Theme.region.opacity(0.08) : Theme.surface)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .strokeBorder(isDropTarget ? Theme.region : Theme.border, style: StrokeStyle(lineWidth: 1.5, dash: [7, 5]))
-        )
-        .dropDestination(for: URL.self) { urls, _ in
-            guard let url = urls.first(where: ReferenceImage.isSupported) else { return false }
-            onPick(url)
-            return true
-        } isTargeted: { isDropTarget = $0 }
-        .sheet(isPresented: $showHistory) {
-            HistoryPicker { url in
-                showHistory = false
-                if let url { onPick(url) }
-            }
-            .environmentObject(history)
-        }
-    }
-}
-
 /// Barra flotante inferior de las herramientas.
 struct ToolBarContainer<Content: View>: View {
     @ViewBuilder let content: () -> Content
@@ -178,21 +122,4 @@ func fittedSize(_ image: CGSize, in container: CGSize) -> CGSize {
     guard image.width > 0, image.height > 0, container.width > 0, container.height > 0 else { return .zero }
     let scale = min(container.width / image.width, container.height / image.height)
     return CGSize(width: image.width * scale, height: image.height * scale)
-}
-
-/// Imagen de entrada mostrada grande y sin recortar.
-struct FittedImage: View {
-    let image: NSImage
-    var size: CGSize? = nil
-
-    var body: some View {
-        GeometryReader { geo in
-            let s = fittedSize(size ?? image.size, in: geo.size)
-            Image(nsImage: image)
-                .resizable()
-                .frame(width: s.width, height: s.height)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.cornerResult, style: .continuous))
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-    }
 }

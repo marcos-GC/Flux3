@@ -40,13 +40,12 @@ struct ResultSlot: Identifiable {
     }
 }
 
-/// Una fila del feed: el prompt a la izquierda y sus resultados a la derecha.
+/// Una petición de Generar (1–4 imágenes en paralelo) y el estado de cada una.
 struct FeedItem: Identifiable {
     let id = UUID()
     let prompt: String
     let modelName: String
     let aspectRatio: Double
-    var referenceThumbnails: [NSImage] = []
     let createdAt = Date()
     var slots: [ResultSlot]
 

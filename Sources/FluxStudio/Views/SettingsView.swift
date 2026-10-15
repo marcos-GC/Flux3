@@ -161,6 +161,21 @@ struct SettingsView: View {
                         .font(.system(size: 13))
                         .monospacedDigit()
                 }
+
+                card {
+                    SectionLabel("Acerca de")
+                    Text("FLUX Studio \(appVersion) · com.grupocosmic.fluxstudio")
+                        .font(.system(size: 13))
+                    Text("Para actualizar, pega en Terminal la línea de instalación del README; descarga siempre la última versión.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button("Abrir el README en GitHub") {
+                        if let url = URL(string: "https://github.com/marcos-GC/Flux3/blob/claude/flux-studio-macos-app-afvdnk/README.md") {
+                            NSWorkspace.shared.open(url)
+                        }
+                    }
+                }
             }
             .frame(maxWidth: 640, alignment: .leading)
             .padding(.horizontal, 40)
@@ -206,6 +221,10 @@ struct SettingsView: View {
                 show(error.localizedDescription, error: true)
             }
         }
+    }
+
+    private var appVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "(desarrollo)"
     }
 
     private func showClaude(_ text: String, error: Bool) {

@@ -203,7 +203,6 @@ final class AppState: ObservableObject {
             prompt: text,
             modelName: BFLEndpoint.flux3Image.displayName,
             aspectRatio: aspect,
-            referenceThumbnails: references.compactMap(\.thumbnail),
             slots: (0..<max(1, min(4, p.count))).map { _ in ResultSlot() }
         )
         feed.append(item)
@@ -251,6 +250,10 @@ final class AppState: ObservableObject {
             updateSlot(itemID, slotID) { $0.phase = .cancelled }
         } catch {
             updateSlot(itemID, slotID) { $0.phase = .failed(error.localizedDescription) }
+            // Sin filas de feed, el error se muestra en un aviso (uno solo si fallan varias a la vez).
+            if alert == nil {
+                alert = AppAlert(title: "No se ha podido generar", message: error.localizedDescription)
+            }
         }
     }
 
@@ -332,19 +335,7 @@ final class AppState: ObservableObject {
         tasks[itemID] = nil
     }
 
-    func remove(itemID: UUID) {
-        cancel(itemID: itemID)
-        feed.removeAll { $0.id == itemID }
-    }
-
     // MARK: - Reutilizar y enviar a otras herramientas
-
-    /// Vuelve a poner el prompt de una fila del feed en la barra.
-    func reuse(_ item: FeedItem) {
-        prompt = item.prompt
-        tool = .generate
-        mode = .generate
-    }
 
     /// Recupera prompt y parámetros de un resultado guardado.
     func reuse(_ record: GenerationRecord) {

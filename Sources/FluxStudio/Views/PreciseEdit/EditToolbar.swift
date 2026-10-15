@@ -2,63 +2,7 @@ import AppKit
 import FluxCore
 import SwiftUI
 
-/// Selector de una imagen del Historial.
-struct HistoryPicker: View {
-    @EnvironmentObject private var history: HistoryStore
-    let completion: (URL?) -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text("Elige una imagen del historial").font(.system(size: 16, weight: .semibold))
-                Spacer()
-                Button("Cancelar") { completion(nil) }.keyboardShortcut(.cancelAction)
-            }
-            .padding(18)
-            Divider()
-            let images = history.items.filter { !$0.isVideo }
-            if images.isEmpty {
-                Text(history.isLoading ? "Cargando…" : "Todavía no hay imágenes en el historial.")
-                    .foregroundStyle(Theme.textSecondary)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ScrollView {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 12)], spacing: 12) {
-                        ForEach(images) { item in
-                            PickerThumb(url: item.fileURL)
-                                .onTapGesture { completion(item.fileURL) }
-                                .help(item.record.prompt)
-                        }
-                    }
-                    .padding(18)
-                }
-            }
-        }
-        .frame(width: 760, height: 560)
-        .background(Theme.background)
-        .onAppear { history.reload() }
-        .preferredColorScheme(.light)
-    }
-}
-
-private struct PickerThumb: View {
-    let url: URL
-    @State private var image: NSImage?
-
-    var body: some View {
-        Color.clear
-            .aspectRatio(1, contentMode: .fit)
-            .overlay {
-                if let image { Image(nsImage: image).resizable().scaledToFill() } else { ShimmerView() }
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .contentShape(Rectangle())
-            .task(id: url) { image = await ThumbnailLoader.load(url, maxPixelSize: 400) }
-    }
-}
-
-
-/// Barra superior de Editar con precisión (estilo FLUX Tools).
+/// Barra de regiones de Editar con precisión (estilo FLUX Tools), encima de la caja del prompt.
 struct EditToolbar: View {
     @EnvironmentObject private var model: PreciseEditModel
     @Binding var confirmReset: Bool

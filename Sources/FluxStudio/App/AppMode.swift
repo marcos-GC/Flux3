@@ -35,15 +35,4 @@ enum AppMode: String, CaseIterable, Identifiable {
         case .settings: return "gearshape"
         }
     }
-
-    /// Fase del plan en la que llega cada modo.
-    var plannedPhase: Int {
-        switch self {
-        case .generate, .settings: return 1
-        case .history: return 2
-        case .preciseEdit: return 3
-        case .outpaint, .erase, .tryOn, .deblur: return 4
-        case .video: return 5
-        }
-    }
 }
