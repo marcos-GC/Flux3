@@ -36,7 +36,7 @@ struct PromptBarView: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(state.references.count >= 10)
-                .help("Añade hasta 10 imágenes de referencia (también puedes arrastrarlas aquí)")
+                .help("Añade hasta 10 imágenes de referencia (o arrástralas desde el Finder a la zona «Usar como referencia»)")
 
                 ChipPicker(
                     icon: "aspectratio",
@@ -107,11 +107,6 @@ struct PromptBarView: View {
         .padding(14)
         .frame(maxWidth: 820)
         .surfaceStyle(cornerRadius: Theme.cornerPromptBar)
-        // Soltar imágenes sobre la barra = añadirlas como referencia.
-        .dropDestination(for: URL.self) { urls, _ in
-            state.addReferences(urls)
-            return true
-        }
         .padding(.horizontal, 28)
         .onAppear { focused = true }
     }

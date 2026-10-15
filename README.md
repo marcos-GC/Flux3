@@ -30,6 +30,13 @@ Descarga la última versión, la copia a **Aplicaciones** y la abre. Así macOS 
 4. La primera vez que generes algo, macOS pedirá permiso para que FLUX Studio lea la clave del Llavero. Escribe **la contraseña de tu Mac** (no la API key) y pulsa **Permitir siempre**. Si pulsas solo «Permitir», volverá a preguntar en cada sesión.
    Tras instalar una versión nueva de la app, macOS lo pregunta una vez más: es normal, porque la app no está firmada con un certificado de pago de Apple.
 
+## Arrastrar imágenes desde el Finder
+
+Al arrastrar una imagen sobre la pantalla principal aparecen dos zonas:
+
+- **Editar esta imagen** (izquierda): la imagen se abre en grande y directamente en **Editar**. Escribe el cambio en «Cambio en toda la imagen» o dibuja regiones para cambios precisos.
+- **Usar como referencia** (derecha): la imagen se añade a la caja del prompt de **Generar** como «image 1», «image 2»… Puedes soltar varias a la vez (hasta 10).
+
 ## Mejorar prompts con Claude (opcional)
 
 En la caja del prompt de **Generar** y de **Vídeo** hay un botón **Mejorar** (⌘E). Envía tu idea a **Claude Haiku 5.5**, que la reescribe en inglés siguiendo las guías oficiales de prompting de FLUX 3 (materiales, luz, encuadre; en vídeo, cámara, acción y sonido) sin cambiar lo que pediste. Junto al botón aparecen **Deshacer** y un icono ⓘ con lo que ha cambiado, explicado en español.

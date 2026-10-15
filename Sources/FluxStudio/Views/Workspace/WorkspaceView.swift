@@ -2,6 +2,7 @@ import AppKit
 import AVKit
 import FluxCore
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Pantalla principal (Estudio): imagen seleccionada en grande, herramientas abajo
 /// y tira de resultados a la derecha. Todo se hace sobre la imagen seleccionada.
@@ -11,9 +12,10 @@ struct WorkspaceView: View {
     @EnvironmentObject private var preciseEdit: PreciseEditModel
     @State private var showPrompt = false
     @State private var confirmReset = false
-    @State private var isDropTarget = false
+    @State private var dropZone: StudioDropZone?
     @State private var compare = false
     @State private var focusedSize: CGSize?
+    @State private var studioWidth: CGFloat = 900
 
     var body: some View {
         HStack(spacing: 0) {
@@ -25,25 +27,20 @@ struct WorkspaceView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // Al arrastrar imágenes desde el Finder: zona izquierda = editar, derecha = referencia.
             .overlay {
-                if isDropTarget {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .strokeBorder(Theme.region, style: StrokeStyle(lineWidth: 2, dash: [8, 6]))
-                        .background(Theme.region.opacity(0.05))
-                        .overlay(
-                            Label("Suelta para abrir la imagen en el Estudio", systemImage: "photo")
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundStyle(Theme.region)
-                        )
-                        .padding(16)
+                if let dropZone {
+                    StudioDropOverlay(active: dropZone)
                         .allowsHitTesting(false)
                 }
             }
-            .dropDestination(for: URL.self) { urls, _ in
-                guard let url = urls.first(where: ReferenceImage.isSupported) else { return false }
-                state.focus(url)
-                return true
-            } isTargeted: { isDropTarget = $0 }
+            .background(GeometryReader { geo in
+                Color.clear.preference(key: StudioWidthKey.self, value: geo.size.width)
+            })
+            .onPreferenceChange(StudioWidthKey.self) { studioWidth = $0 }
+            .onDrop(of: [.fileURL], delegate: StudioDropDelegate(zone: $dropZone, width: studioWidth) { urls, zone in
+                handleDrop(urls, zone: zone)
+            })
 
             Rectangle().fill(Theme.border).frame(width: 1)
             ResultStrip()
@@ -195,6 +192,24 @@ struct WorkspaceView: View {
             VideoBar(model: state.video)
         case .edit:
             NeedsImageBar()
+        }
+    }
+
+    /// Imágenes soltadas desde el Finder.
+    private func handleDrop(_ urls: [URL], zone: StudioDropZone) {
+        let images = urls.filter(ReferenceImage.isSupported)
+        guard !images.isEmpty else {
+            state.alert = AppAlert(title: "Archivo no compatible", message: "Solo se pueden soltar imágenes (JPEG, PNG, WebP, HEIC…).")
+            return
+        }
+        switch zone {
+        case .edit:
+            // Se abre directamente en Editar: escribir el cambio o dibujar regiones.
+            state.focus(images[0], tool: .edit)
+        case .reference:
+            state.addReferences(images)
+            state.tool = .generate
+            state.mode = .generate
         }
     }
 
@@ -363,5 +378,117 @@ private struct FocusedStage: View {
                 parentImage = await ThumbnailLoader.load(parent, maxPixelSize: 3000)
             }
         }
+    }
+}
+
+// MARK: - Soltar imágenes desde el Finder
+
+enum StudioDropZone {
+    case edit, reference
+}
+
+private struct StudioWidthKey: PreferenceKey {
+    static let defaultValue: CGFloat = 900
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
+/// Decide la zona según dónde está el puntero (izquierda 60 % = editar, derecha = referencia).
+private struct StudioDropDelegate: DropDelegate {
+    @Binding var zone: StudioDropZone?
+    let width: CGFloat
+    let onDrop: ([URL], StudioDropZone) -> Void
+
+    static let editFraction: CGFloat = 0.6
+
+    private func zoneAt(_ info: DropInfo) -> StudioDropZone {
+        info.location.x < width * Self.editFraction ? .edit : .reference
+    }
+
+    func validateDrop(info: DropInfo) -> Bool {
+        info.hasItemsConforming(to: [.fileURL])
+    }
+
+    func dropEntered(info: DropInfo) {
+        zone = zoneAt(info)
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        let current = zoneAt(info)
+        if zone != current { zone = current }
+        return DropProposal(operation: .copy)
+    }
+
+    func dropExited(info: DropInfo) {
+        zone = nil
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        let target = zoneAt(info)
+        zone = nil
+        let providers = info.itemProviders(for: [.fileURL])
+        guard !providers.isEmpty else { return false }
+        Task { @MainActor in
+            var urls: [URL] = []
+            for provider in providers {
+                if let url = await Self.loadURL(provider) { urls.append(url) }
+            }
+            onDrop(urls, target)
+        }
+        return true
+    }
+
+    private static func loadURL(_ provider: NSItemProvider) async -> URL? {
+        await withCheckedContinuation { continuation in
+            _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                continuation.resume(returning: url)
+            }
+        }
+    }
+}
+
+/// Las dos zonas que aparecen al arrastrar una imagen.
+private struct StudioDropOverlay: View {
+    let active: StudioDropZone
+
+    var body: some View {
+        GeometryReader { geo in
+            HStack(spacing: 12) {
+                zoneView(.edit, icon: "pencil.and.outline", title: "Editar esta imagen",
+                         detail: "Se abre en grande, lista para editar: escribe el cambio o dibuja regiones.")
+                    .frame(width: (geo.size.width - 44) * StudioDropDelegate.editFraction)
+                zoneView(.reference, icon: "square.on.square", title: "Usar como referencia",
+                         detail: "Se añade a la caja del prompt como «image 1, 2…» para generar algo nuevo.")
+            }
+            .padding(16)
+        }
+        .background(Theme.background.opacity(0.55))
+        .animation(.easeOut(duration: 0.12), value: active)
+    }
+
+    private func zoneView(_ zone: StudioDropZone, icon: String, title: String, detail: String) -> some View {
+        let isActive = zone == active
+        return VStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 34, weight: .light))
+            Text(title.uppercased())
+                .font(.system(size: 14, weight: .semibold))
+                .tracking(1)
+            Text(detail)
+                .font(.system(size: 12))
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 280)
+        }
+        .foregroundStyle(isActive ? Theme.region : Theme.textSecondary)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(isActive ? Theme.region.opacity(0.14) : Theme.surface.opacity(0.85))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(isActive ? Theme.region : Theme.border,
+                              style: StrokeStyle(lineWidth: isActive ? 2.5 : 1.5, dash: [8, 6]))
+        )
+        .scaleEffect(isActive ? 1 : 0.98)
     }
 }
