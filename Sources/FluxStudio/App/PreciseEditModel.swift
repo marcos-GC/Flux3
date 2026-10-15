@@ -328,7 +328,7 @@ final class PreciseEditModel: ObservableObject {
         let parentIndex = currentIndex
         let sourceURL = version.fileURL
         let res = resolution, st = safety, gr = grounding
-        let group = UUID()
+        let requestID = UUID()
 
         isGenerating = true
         statusText = "Preparando imagen"
@@ -355,7 +355,7 @@ final class PreciseEditModel: ObservableObject {
                                     modelName: "Editar", prefix: "precise-edit", index: index,
                                     prompt: summaryText, sentPrompt: prompt, parameters: parameters,
                                     referenceCount: regionRefs.count + extraRefs.count,
-                                    source: sourceURL, group: group
+                                    source: sourceURL, group: requestID
                                 ) { [weak self] phase, _, _ in
                                     self?.statusText = Self.describe(phase)
                                 })
