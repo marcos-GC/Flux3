@@ -67,7 +67,7 @@ Al arrastrar una imagen sobre la pantalla aparecen dos zonas:
 |---|---|---|
 | **Generar** | Imágenes nuevas con FLUX 3 Image | Prompt, referencias (hasta 10), proporción, resolución, 1–4 imágenes, tolerancia y «Consultar referencias en internet» en «Ajustes». ⌘↩ genera. |
 | **Editar** | Cambios precisos (réplica de *Precise Editing* de BFL) | Escribe un cambio para toda la imagen o arrastra sobre ella para dibujar **regiones**, cada una con su instrucción, su imagen de referencia y su tipo (Editar, Nuevo, Mover, Proteger). «Ver prompt» enseña el texto exacto que se envía y deja editarlo. Zoom con ⌘ + rueda o pellizco; desplazamiento con espacio + arrastrar. |
-| **Borrar** | Quitar objetos | Pinta encima de lo que sobra (pincel, goma, deshacer ⌘Z, invertir, limpiar). «Ampliar máscara» suaviza el borde. |
+| **Borrar** | Quitar objetos | Con **Marcar**, pinta en violeta lo que sobra y pulsa ↑. **Desmarcar** solo quita pintura violeta si te has pasado (no borra nada de la imagen). También: deshacer ⌘Z, invertir y limpiar. «Ampliar máscara» suaviza el borde. |
 | **Ampliar** | Outpainting: extender la imagen | Elige la proporción del lienzo o los píxeles, arrastra la imagen dentro del lienzo y, si quieres, describe la zona nueva. |
 | **Deblur** | Quitar desenfoque | Pulsa generar. |
 | **Probador** | Vestir a una persona con una prenda | La persona es la imagen seleccionada; añade la prenda y descríbela en inglés. |

@@ -1,7 +1,7 @@
 import FluxCore
 import SwiftUI
 
-/// Barra inferior de Borrar: pincel, goma, deshacer, invertir…
+/// Barra inferior de Borrar: marcar, desmarcar, deshacer, invertir…
 struct EraseBar: View {
     @EnvironmentObject private var state: AppState
     @ObservedObject var model: EraseModel
@@ -15,13 +15,15 @@ struct EraseBar: View {
     var body: some View {
         ToolBarContainer {
             HStack(spacing: 8) {
+                // «Marcar» pinta en violeta lo que se borrará; «Desmarcar» solo corrige esa pintura.
                 Picker("", selection: $model.isEraser) {
-                    Label("Pincel", systemImage: "paintbrush.pointed").tag(false)
-                    Label("Goma", systemImage: "eraser").tag(true)
+                    Label("Marcar", systemImage: "paintbrush.pointed").tag(false)
+                    Label("Desmarcar", systemImage: "minus.circle").tag(true)
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
-                .frame(width: 170)
+                .frame(width: 200)
+                .help("Marcar: pinta en violeta lo que quieres borrar · Desmarcar: quita pintura violeta si te has pasado")
 
                 HStack(spacing: 6) {
                     Image(systemName: "circle.fill").font(.system(size: 6))
@@ -55,9 +57,12 @@ struct EraseBar: View {
                 }
                 .help("dilate_pixels: agranda un poco la zona pintada para que el borde quede limpio (por defecto 10)")
                 if model.maskIsEmpty {
-                    Text("Pinta sobre lo que quieres borrar.")
+                    Text(model.isEraser
+                         ? "«Desmarcar» solo quita pintura violeta. Usa «Marcar» para señalar lo que quieres borrar."
+                         : "Pinta en violeta lo que quieres borrar y pulsa ↑.")
                         .font(.system(size: 12))
-                        .foregroundStyle(Theme.textSecondary)
+                        .foregroundStyle(model.isEraser ? Theme.danger : Theme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
                 ToolSettingsChip(model: model)
@@ -159,6 +164,8 @@ private struct MaskCanvas: View {
                 hover = value.location
                 let point = normalized(value.location, frame: frame)
                 if current == nil {
+                    // Sin nada marcado no hay nada que desmarcar: se pinta directamente.
+                    if model.isEraser && model.maskIsEmpty { model.isEraser = false }
                     current = MaskStroke(points: [point], radius: model.brushRadius, erases: model.isEraser)
                 } else {
                     current?.points.append(point)

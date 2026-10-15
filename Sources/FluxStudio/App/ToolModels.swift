@@ -293,6 +293,7 @@ final class EraseModel: BaseToolModel {
         strokes = []
         redoStack = []
         inverted = false
+        isEraser = false
     }
 
     var maskIsEmpty: Bool { MaskRenderer.isEmpty(strokes: strokes, inverted: inverted) }
