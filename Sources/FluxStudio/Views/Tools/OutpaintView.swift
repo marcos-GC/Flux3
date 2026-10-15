@@ -1,7 +1,7 @@
 import FluxCore
 import SwiftUI
 
-/// Barra inferior de Ampliar (Outpainting).
+/// Barra inferior de Ampliar.
 struct OutpaintBar: View {
     @EnvironmentObject private var state: AppState
     @ObservedObject var model: OutpaintModel
@@ -24,7 +24,7 @@ struct OutpaintBar: View {
                 ChipPicker(icon: "aspectratio", title: "Proporción del lienzo", options: OutpaintModel.presets,
                            selection: $model.preset, label: { $0.label })
                 ChipPicker(icon: "arrow.up.left.and.arrow.down.right", title: "Ampliar", options: OutpaintModel.expansions,
-                           selection: $model.expand, label: { $0 == 1 ? "Ajustado" : "×\($0.formatted(.number.precision(.fractionLength(0...2))))" })
+                           selection: $model.expand, label: { $0 == 1 ? "Solo cambiar proporción" : "×\($0.formatted(.number.precision(.fractionLength(0...2))))" })
                 SizeField(label: "An", value: Int(model.canvasSize.width)) { model.setCanvas(width: $0) }
                 Text("×").foregroundStyle(Theme.textSecondary)
                 SizeField(label: "Al", value: Int(model.canvasSize.height)) { model.setCanvas(height: $0) }
@@ -34,9 +34,9 @@ struct OutpaintBar: View {
                 ChipPicker(icon: "speedometer", title: "Modo", options: OutpaintRequest.Mode.allCases,
                            selection: $model.mode, label: { $0 == .high ? "Alta calidad" : "Rápido" })
                 ToolSettingsChip(model: model, showsSeed: false) {
-                    Toggle("Recortar automáticamente (auto_crop)", isOn: $model.autoCrop)
+                    Toggle("Recortar bordes sobrantes", isOn: $model.autoCrop)
                         .toggleStyle(.switch).controlSize(.small)
-                    Toggle("Desactivar mejora automática del prompt", isOn: $model.disablePup)
+                    Toggle("Usar mi texto tal cual (sin que BFL lo amplíe)", isOn: $model.disablePup)
                         .toggleStyle(.switch).controlSize(.small)
                 }
                 Spacer(minLength: 4)

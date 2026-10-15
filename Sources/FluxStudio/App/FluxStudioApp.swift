@@ -26,7 +26,10 @@ struct FluxStudioApp: App {
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1280, height: 820)
         .commands {
-            CommandGroup(replacing: .newItem) {}
+            CommandGroup(replacing: .newItem) {
+                Button("Nuevo") { state.requestNew() }
+                    .keyboardShortcut("n", modifiers: .command)
+            }
         }
     }
 }

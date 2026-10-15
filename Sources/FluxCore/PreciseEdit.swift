@@ -36,7 +36,7 @@ public enum RegionKind: String, CaseIterable, Sendable, Codable {
         case .edit: return "Editar"
         case .new: return "Nuevo"
         case .move: return "Mover"
-        case .anchor: return "Ancla"
+        case .anchor: return "Proteger"
         }
     }
 }
@@ -45,7 +45,7 @@ public enum RegionKind: String, CaseIterable, Sendable, Codable {
 public struct EditRegionSpec: Sendable, Equatable {
     public var number: Int
     public var kind: RegionKind
-    /// Caja origen (Editar, Mover, Ancla).
+    /// Caja origen (Editar, Mover, Proteger).
     public var source: PixelRect?
     /// Caja destino (Nuevo, Mover).
     public var target: PixelRect?

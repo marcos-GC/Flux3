@@ -11,10 +11,10 @@ enum AppMode: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .generate: return "Estudio"
-        case .preciseEdit: return "Editar con precisión"
-        case .outpaint: return "Outpainting"
+        case .preciseEdit: return "Editar"
+        case .outpaint: return "Ampliar"
         case .erase: return "Borrar"
-        case .tryOn: return "Probador virtual"
+        case .tryOn: return "Probador"
         case .deblur: return "Deblur"
         case .video: return "Vídeo"
         case .history: return "Historial"
@@ -34,5 +34,19 @@ enum AppMode: String, CaseIterable, Identifiable {
         case .history: return "clock.arrow.circlepath"
         case .settings: return "gearshape"
         }
+    }
+}
+
+/// Nombres de herramienta que se guardaban en versiones anteriores, para mostrarlos
+/// con el vocabulario actual (el mismo de la barra lateral).
+enum ToolNames {
+    private static let legacy = [
+        "Editar con precisión": "Editar",
+        "Outpainting": "Ampliar",
+        "Probador virtual": "Probador",
+    ]
+
+    static func display(_ model: String) -> String {
+        legacy[model] ?? model
     }
 }

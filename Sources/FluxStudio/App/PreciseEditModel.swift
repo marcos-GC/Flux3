@@ -28,7 +28,7 @@ struct EditReference: Identifiable, Equatable {
 struct RegionDraft: Identifiable, Equatable {
     let id = UUID()
     var kind: RegionKind = .edit
-    /// Caja principal: origen (Editar, Mover, Ancla) o destino (Nuevo).
+    /// Caja principal: origen (Editar, Mover, Proteger) o destino (Nuevo).
     var rect: CGRect
     /// Caja destino en el modo Mover.
     var target: CGRect?
@@ -321,13 +321,14 @@ final class PreciseEditModel: ObservableObject {
         }
 
         let prompt = effectivePrompt
-        let summaryText = summary.isEmpty ? "Edición con precisión" : summary
+        let summaryText = summary.isEmpty ? "Edición" : summary
         let regionRefs = regions.compactMap { $0.reference?.encoded?.base64 }
         let extraRefs = extraReferences.compactMap { $0.encoded?.base64 }
         let n = max(1, min(4, count))
         let parentIndex = currentIndex
         let sourceURL = version.fileURL
         let res = resolution, st = safety, gr = grounding
+        let group = UUID()
 
         isGenerating = true
         statusText = "Preparando imagen"
@@ -351,10 +352,10 @@ final class PreciseEditModel: ObservableObject {
                             do {
                                 return .success(try await state.runJob(
                                     client: client, endpoint: .flux3Image, body: body,
-                                    modelName: "Editar con precisión", prefix: "precise-edit", index: index,
+                                    modelName: "Editar", prefix: "precise-edit", index: index,
                                     prompt: summaryText, sentPrompt: prompt, parameters: parameters,
                                     referenceCount: regionRefs.count + extraRefs.count,
-                                    source: sourceURL
+                                    source: sourceURL, group: group
                                 ) { [weak self] phase, _, _ in
                                     self?.statusText = Self.describe(phase)
                                 })
@@ -366,7 +367,9 @@ final class PreciseEditModel: ObservableObject {
                     for await result in group {
                         switch result {
                         case .success(let output):
-                            self.appendVersion(from: output, parent: parentIndex)
+                            // Solo pasa a la versión nueva si el Estudio la ha seleccionado (selección estable).
+                            self.appendVersion(from: output, parent: parentIndex,
+                                               select: state.focusedURL == output.stored.fileURL)
                         case .failure(let error):
                             if !(error is CancellationError) { failures.append(error.localizedDescription) }
                         }
@@ -389,11 +392,11 @@ final class PreciseEditModel: ObservableObject {
         generationTask?.cancel()
     }
 
-    private func appendVersion(from output: AppState.JobOutput, parent: Int) {
+    private func appendVersion(from output: AppState.JobOutput, parent: Int, select: Bool) {
         guard let image = NSImage(data: output.data) else { return }
         let size = ImageEncoder.pixelSize(fileURL: output.stored.fileURL).map { CGSize(width: $0.width, height: $0.height) } ?? image.size
         versions.append(EditVersion(fileURL: output.stored.fileURL, image: image, pixelSize: size, parentIndex: parent))
-        currentIndex = versions.count - 1
+        if select { currentIndex = versions.count - 1 }
     }
 
     static func describe(_ phase: ResultSlot.Phase) -> String {

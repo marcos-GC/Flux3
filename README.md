@@ -33,7 +33,8 @@ Descarga la última versión, la copia a **Aplicaciones** y la abre, sin el avis
 
 ```
 ┌────────┬──────────────────────────────────────────┬────────┐
-│ Generar│                                          │ + Abrir│
+│ Nuevo  │                                          │ + Abrir│
+│ Generar│                                          │        │
 │ Editar │          IMAGEN SELECCIONADA             │  ▒▒▒   │ ← en curso
 │ Borrar │          (en grande, proporción real)    │  img   │ ← seleccionada
 │ Ampliar│                                          │  img   │
@@ -46,10 +47,12 @@ Descarga la última versión, la copia a **Aplicaciones** y la abre, sin el avis
 └────────┴──────────────────────────────────────────┴────────┘
 ```
 
-- **Izquierda:** las herramientas. Todas trabajan sobre la **imagen seleccionada**; al cambiar de herramienta solo cambia la caja inferior. **Generar** en la barra lateral empieza de cero (sin imagen, prompt ni referencias).
-- **Centro:** la imagen seleccionada. Debajo, su prompt y los botones **Antes / Después** (compara con la imagen de la que sale), **Reutilizar**, **Referencia**, **A vídeo**, **Finder** y **Más**.
-- **Derecha:** la tira de resultados, con lo más nuevo arriba. Un clic abre la imagen en grande. Lo que se está generando aparece como un hueco animado con su estado.
-- **Encadenar:** cada resultado nuevo queda seleccionado, así que puedes generar → editar → borrar algo → ampliar sin salir de la pantalla.
+- **Izquierda:** **Nuevo** (⌘N) empieza de cero: quita la imagen seleccionada, el prompt y las referencias (si hay algo escrito, pregunta antes). Debajo, las herramientas: todas trabajan sobre la **imagen seleccionada** y al cambiar de una a otra se conserva lo escrito. Con un vídeo seleccionado, las herramientas de imagen se desactivan y **Vídeo** se abre en el modo que encaja (imagen → Imagen a vídeo; vídeo → Continuar).
+- **Centro:** la imagen seleccionada. Debajo, su prompt y los botones **Antes / Después** (compara con la imagen de la que sale), **Reutilizar**, **Como referencia**, **A vídeo**, **Finder** y **Más**.
+- **Derecha:** la tira de resultados **de esta sesión**, con lo más nuevo arriba (lo anterior está en **Historial**). Un clic abre la imagen en grande. Lo que se está generando aparece como un hueco animado con su estado.
+- **Encadenar:** si sigues en la imagen de la que sale un resultado, el resultado queda seleccionado, así que puedes generar → editar → borrar algo → ampliar sin salir de la pantalla.
+- **Selección estable:** si mientras tanto has pasado a otra imagen, el resultado no te la cambia: aparece en la tira con la etiqueta **Nuevo** y un aviso arriba, **«Listo · Ver»**.
+- **Generar con una imagen seleccionada:** al pulsar generar, la app pregunta qué hacer con ella: **Editar esta imagen** (el prompt describe el cambio), **Usarla como referencia** o **Crear una imagen nueva** (no se usa).
 
 ### Arrastrar imágenes desde el Finder
 
@@ -62,8 +65,8 @@ Al arrastrar una imagen sobre la pantalla aparecen dos zonas:
 
 | Herramienta | Para qué | Qué haces |
 |---|---|---|
-| **Generar** | Imágenes nuevas con FLUX 3 Image | Prompt, referencias (hasta 10), proporción, resolución, 1–4 imágenes, tolerancia y *grounding* en «Ajustes». ⌘↩ genera. |
-| **Editar** | Cambios precisos (réplica de *Precise Editing* de BFL) | Escribe un cambio para toda la imagen o arrastra sobre ella para dibujar **regiones**, cada una con su instrucción, su imagen de referencia y su tipo (Editar, Nuevo, Mover, Ancla). «Ver prompt» enseña el texto exacto que se envía y deja editarlo. Zoom con ⌘ + rueda o pellizco; desplazamiento con espacio + arrastrar. |
+| **Generar** | Imágenes nuevas con FLUX 3 Image | Prompt, referencias (hasta 10), proporción, resolución, 1–4 imágenes, tolerancia y «Consultar referencias en internet» en «Ajustes». ⌘↩ genera. |
+| **Editar** | Cambios precisos (réplica de *Precise Editing* de BFL) | Escribe un cambio para toda la imagen o arrastra sobre ella para dibujar **regiones**, cada una con su instrucción, su imagen de referencia y su tipo (Editar, Nuevo, Mover, Proteger). «Ver prompt» enseña el texto exacto que se envía y deja editarlo. Zoom con ⌘ + rueda o pellizco; desplazamiento con espacio + arrastrar. |
 | **Borrar** | Quitar objetos | Pinta encima de lo que sobra (pincel, goma, deshacer ⌘Z, invertir, limpiar). «Ampliar máscara» suaviza el borde. |
 | **Ampliar** | Outpainting: extender la imagen | Elige la proporción del lienzo o los píxeles, arrastra la imagen dentro del lienzo y, si quieres, describe la zona nueva. |
 | **Deblur** | Quitar desenfoque | Pulsa generar. |

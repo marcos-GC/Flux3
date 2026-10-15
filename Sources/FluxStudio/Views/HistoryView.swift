@@ -16,7 +16,7 @@ struct HistoryView: View {
     private var filtered: [StoredResult] {
         let query = search.trimmingCharacters(in: .whitespaces).lowercased()
         return history.items.filter { item in
-            (model == Self.allModels || item.record.model == model)
+            (model == Self.allModels || ToolNames.display(item.record.model) == model)
                 && (query.isEmpty
                     || item.record.prompt.lowercased().contains(query)
                     || (item.record.expandedPrompt?.lowercased().contains(query) ?? false))
@@ -147,7 +147,7 @@ private struct HistoryCell: View {
                 .font(.system(size: 12))
                 .foregroundStyle(Theme.textPrimary)
                 .lineLimit(2)
-            Text("\(item.record.model) · \(item.record.createdAt.formatted(date: .abbreviated, time: .shortened))")
+            Text("\(ToolNames.display(item.record.model)) · \(item.record.createdAt.formatted(date: .abbreviated, time: .shortened))")
                 .font(.system(size: 10))
                 .foregroundStyle(Theme.textSecondary)
                 .lineLimit(1)
@@ -208,7 +208,7 @@ private struct HistoryDetailView: View {
 
                     SectionLabel("Detalles").padding(.top, 6)
                     VStack(alignment: .leading, spacing: 5) {
-                        info("Modelo", item.record.model)
+                        info("Herramienta", ToolNames.display(item.record.model))
                         info("Fecha", item.record.createdAt.formatted(date: .long, time: .shortened))
                         if let cost = item.record.cost { info("Coste", "\(formatCredits(cost)) créditos") }
                         if let ar = item.record.parameters["aspect_ratio"]?.stringValue { info("Proporción", ar) }
@@ -226,10 +226,7 @@ private struct HistoryDetailView: View {
                         Button("Reutilizar prompt y parámetros") { close(); state.reuse(item.record) }
                         Button("Usar como referencia") { close(); state.useAsReference(item.fileURL) }
                         Menu("Enviar a…") {
-                            Button("Editar con precisión") { close(); state.send(item.fileURL, to: .preciseEdit) }
-                            Button("Outpainting") { close(); state.send(item.fileURL, to: .outpaint) }
-                            Button("Borrar") { close(); state.send(item.fileURL, to: .erase) }
-                            Button("Imagen a vídeo") { close(); state.send(item.fileURL, to: .video) }
+                            SendToButtons(fileURL: item.fileURL) { close() }
                         }
                         .fixedSize()
                         HStack {

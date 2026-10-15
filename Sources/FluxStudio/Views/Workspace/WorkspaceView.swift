@@ -27,6 +27,15 @@ struct WorkspaceView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // Resultado que ha llegado mientras trabajabas en otra imagen.
+            .overlay(alignment: .top) {
+                if let notice = state.readyNotice {
+                    ReadyToast(notice: notice)
+                        .padding(.top, 16)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+            }
+            .animation(.easeOut(duration: 0.2), value: state.readyNotice)
             // Al arrastrar imágenes desde el Finder: zona izquierda = editar, derecha = referencia.
             .overlay {
                 if let dropZone {
@@ -208,8 +217,7 @@ struct WorkspaceView: View {
             state.focus(images[0], tool: .edit)
         case .reference:
             state.addReferences(images)
-            state.tool = .generate
-            state.mode = .generate
+            state.selectTool(.generate)
         }
     }
 
@@ -223,6 +231,40 @@ struct WorkspaceView: View {
         case .deblur: state.deblur.sync(with: url)
         case .tryOn: state.tryOn.sync(with: url)
         case .generate, .video: break
+        }
+    }
+}
+
+/// Aviso discreto «Listo · Ver», sin interrumpir lo que estás haciendo.
+private struct ReadyToast: View {
+    @EnvironmentObject private var state: AppState
+    let notice: ReadyNotice
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(Theme.anchorColor)
+            Text("Listo: \(ToolNames.display(notice.label))")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Theme.textPrimary)
+            Button("Ver") { state.focusedURL = notice.url }
+                .buttonStyle(.plain)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Theme.textPrimary)
+                .underline()
+            Button { state.readyNotice = nil } label: {
+                Image(systemName: "xmark").font(.system(size: 10, weight: .semibold))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Theme.textSecondary)
+            .help("Cerrar aviso")
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .surfaceStyle(cornerRadius: 18)
+        .task(id: notice.id) {
+            try? await Task.sleep(for: .seconds(6))
+            if state.readyNotice?.id == notice.id { state.readyNotice = nil }
         }
     }
 }
@@ -260,7 +302,7 @@ private struct ImageInfoRow: View {
                         .lineLimit(1)
                         .truncationMode(.tail)
                         .help(record?.prompt ?? url.path)
-                    Text([record?.model, record?.cost.map { "\(formatCredits($0)) créditos" }]
+                    Text([record.map { ToolNames.display($0.model) }, record?.cost.map { "\(formatCredits($0)) créditos" }]
                         .compactMap { $0 }.joined(separator: " · "))
                         .font(.system(size: 10))
                         .foregroundStyle(Theme.textSecondary)
@@ -290,8 +332,8 @@ private struct ImageInfoRow: View {
                         .help("Volver a poner este prompt y sus parámetros en Generar")
                 }
                 if !VideoModel.isVideo(url) {
-                    Button { state.addReferences([url]); state.tool = .generate } label: {
-                        Chip(icon: "square.on.square", text: "Referencia")
+                    Button { state.useAsReference(url) } label: {
+                        Chip(icon: "square.on.square", text: "Como referencia")
                     }
                     .buttonStyle(.plain)
                     .help("Usar esta imagen como referencia para generar")
@@ -373,10 +415,19 @@ private struct FocusedStage: View {
                 player = AVPlayer(url: url)
                 return
             }
-            image = await ThumbnailLoader.load(url, maxPixelSize: 3000)
-            if let parent = state.parent(of: url) {
-                parentImage = await ThumbnailLoader.load(parent, maxPixelSize: 3000)
+            // Primero una versión ligera (aparece al instante al recorrer la tira) y luego la
+            // de alta resolución, para que se vea nítida en pantallas Retina grandes.
+            image = await ThumbnailLoader.load(url, maxPixelSize: 1024)
+            guard !Task.isCancelled else { return }
+            if let full = await ThumbnailLoader.load(url, maxPixelSize: 3000), !Task.isCancelled {
+                image = full
             }
+        }
+        // La imagen de «Antes» solo se carga al comparar.
+        .task(id: compare) {
+            guard compare, parentImage == nil, let url = state.focusedURL,
+                  let parent = state.parent(of: url) else { return }
+            parentImage = await ThumbnailLoader.load(parent, maxPixelSize: 3000)
         }
     }
 }

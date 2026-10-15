@@ -42,17 +42,34 @@ enum WorkspaceTool: String, CaseIterable, Identifiable {
     var help: String {
         switch self {
         case .generate: return "Generar imágenes nuevas con FLUX 3 Image"
-        case .edit: return "Editar con precisión: regiones con instrucciones"
+        case .edit: return "Editar: describe un cambio o dibuja regiones con instrucciones"
         case .erase: return "Borrar objetos pintando encima"
-        case .outpaint: return "Ampliar la imagen más allá de sus bordes (Outpainting)"
+        case .outpaint: return "Ampliar: extender la imagen más allá de sus bordes"
         case .deblur: return "Quitar el desenfoque"
-        case .tryOn: return "Probador virtual: vestir a la persona con una prenda"
+        case .tryOn: return "Probador: vestir a la persona con una prenda"
         case .video: return "Crear un vídeo a partir de la imagen"
         }
     }
 
-    /// Las herramientas de edición necesitan una imagen seleccionada.
+    /// Las herramientas de edición necesitan una imagen seleccionada (no un vídeo).
     var needsImage: Bool { self != .generate && self != .video }
+}
+
+/// Qué hacer con la imagen seleccionada al pulsar generar.
+enum FocusedImageUse {
+    /// Se envía como primera imagen y el prompt describe el cambio.
+    case edit
+    /// Se añade como referencia más.
+    case reference
+    /// No se usa: imagen nueva solo con el prompt y las referencias.
+    case ignore
+}
+
+/// Aviso discreto de un resultado que ha llegado mientras trabajabas en otra imagen.
+struct ReadyNotice: Equatable {
+    let id = UUID()
+    let url: URL
+    let label: String
 }
 
 /// Petición en curso (se muestra en la tira de resultados).
@@ -73,8 +90,23 @@ final class AppState: ObservableObject {
     @Published var sessionCredits: Double = 0
     @Published var alert: AppAlert?
     /// Imagen seleccionada en el Estudio (todas las herramientas trabajan sobre ella).
-    @Published var focusedURL: URL?
+    @Published var focusedURL: URL? {
+        didSet {
+            guard focusedURL != oldValue, let url = focusedURL else { return }
+            unseenResults.remove(url)
+            if readyNotice?.url == url { readyNotice = nil }
+            // Un vídeo no se puede abrir en las herramientas de imagen: se pasa a Vídeo.
+            if VideoModel.isVideo(url), tool.needsImage { selectTool(.video) }
+        }
+    }
     @Published var tool: WorkspaceTool = .generate
+    /// Resultados que han llegado sin seleccionarse (se marcan «Nuevo» en la tira).
+    @Published private(set) var unseenResults: Set<URL> = []
+    @Published var readyNotice: ReadyNotice?
+    /// Pregunta qué hacer con la imagen seleccionada antes de generar.
+    @Published var askFocusedUse = false
+    /// Confirmación de «Nuevo» cuando hay algo escrito.
+    @Published var confirmNew = false
     @Published var activeJobs: [ActiveJob] = []
     /// De qué imagen sale cada resultado (para Antes / Después).
     @Published private(set) var parents: [URL: URL] = [:]
@@ -88,6 +120,8 @@ final class AppState: ObservableObject {
     let tryOn: TryOnModel
     let video: VideoModel
     private var tasks: [UUID: [Task<Void, Never>]] = [:]
+    /// Petición a la que pertenece cada resultado (las variantes de una misma petición).
+    private var resultGroups: [URL: UUID] = [:]
 
     init(settings: SettingsStore) {
         self.settings = settings
@@ -171,7 +205,24 @@ final class AppState: ObservableObject {
 
     // MARK: - Generar con FLUX 3 Image
 
-    func generateImage() {
+    /// Imagen seleccionada que se podría usar al generar (no un vídeo ni una que ya es referencia).
+    private var focusedImageForGenerate: URL? {
+        guard let url = focusedURL, !VideoModel.isVideo(url),
+              !references.contains(where: { $0.sourceURL == url }) else { return nil }
+        return url
+    }
+
+    /// Botón de generar: si hay una imagen seleccionada, primero se pregunta qué hacer con ella.
+    func requestGenerate() {
+        guard canGenerate else { return }
+        if focusedImageForGenerate != nil {
+            askFocusedUse = true
+        } else {
+            generateImage(using: .ignore)
+        }
+    }
+
+    func generateImage(using use: FocusedImageUse) {
         let text = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         if let failed = references.first(where: { $0.error != nil }) {
@@ -187,8 +238,38 @@ final class AppState: ObservableObject {
             return
         }
 
+        let focused = use == .ignore ? nil : focusedImageForGenerate
+        if use != .ignore, focused != nil,
+           references.count >= Flux3Image.maxReferenceImages {
+            alert = AppAlert(title: "Máximo de referencias", message: "FLUX 3 Image admite hasta \(Flux3Image.maxReferenceImages) imágenes. Quita una referencia para usar también la imagen seleccionada.")
+            return
+        }
         let p = imageParams
-        let encoded = references.compactMap(\.encoded)
+        let referencesEncoded = references.compactMap(\.encoded)
+        prompt = ""
+
+        guard let focused else {
+            submitImage(client: client, text: text, params: p, images: referencesEncoded, source: nil)
+            return
+        }
+        // La imagen seleccionada se prepara ahora, al generar (no al seleccionarla).
+        Task { [weak self] in
+            do {
+                let encoded = try await Task.detached(priority: .userInitiated) {
+                    try ImageEncoder.encode(fileURL: focused)
+                }.value
+                let images = use == .edit ? [encoded] + referencesEncoded : referencesEncoded + [encoded]
+                self?.submitImage(client: client, text: text, params: p, images: images,
+                                  source: use == .edit ? focused : nil)
+            } catch {
+                self?.prompt = text
+                self?.alert = AppAlert(title: "No se puede usar la imagen", message: "«\(focused.lastPathComponent)»: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func submitImage(client: BFLClient, text: String, params p: ImageParams,
+                             images encoded: [ImageEncoder.Encoded], source: URL?) {
         let body = Flux3ImageRequest(
             prompt: text,
             images: encoded.map(\.base64),
@@ -206,7 +287,6 @@ final class AppState: ObservableObject {
             slots: (0..<max(1, min(4, p.count))).map { _ in ResultSlot() }
         )
         feed.append(item)
-        prompt = ""
 
         let parameters = (try? JSONValue(encoding: body))?.strippingLargeStrings() ?? .null
         let referenceCount = encoded.count
@@ -215,7 +295,7 @@ final class AppState: ObservableObject {
                 await self?.runSlot(
                     itemID: item.id, slotID: slot.id, index: index, client: client,
                     endpoint: .flux3Image, body: body, prompt: text,
-                    parameters: parameters, referenceCount: referenceCount
+                    parameters: parameters, referenceCount: referenceCount, source: source
                 )
             }
         }
@@ -224,13 +304,14 @@ final class AppState: ObservableObject {
     /// Ejecuta una petición del feed y refleja su estado en el hueco correspondiente.
     private func runSlot<Body: Encodable & Sendable>(
         itemID: UUID, slotID: UUID, index: Int, client: BFLClient,
-        endpoint: BFLEndpoint, body: Body, prompt: String, parameters: JSONValue, referenceCount: Int
+        endpoint: BFLEndpoint, body: Body, prompt: String, parameters: JSONValue, referenceCount: Int,
+        source: URL?
     ) async {
         do {
             let output = try await runJob(
                 client: client, endpoint: endpoint, body: body, modelName: endpoint.displayName,
                 prefix: endpoint.filePrefix, index: index, prompt: prompt, sentPrompt: prompt,
-                parameters: parameters, referenceCount: referenceCount
+                parameters: parameters, referenceCount: referenceCount, source: source, group: itemID
             ) { [weak self] phase, taskID, cost in
                 self?.updateSlot(itemID, slotID) {
                     $0.phase = phase
@@ -270,9 +351,11 @@ final class AppState: ObservableObject {
     func runJob<Body: Encodable & Sendable>(
         client: BFLClient, endpoint: BFLEndpoint, body: Body, modelName: String, prefix: String,
         index: Int, prompt: String, sentPrompt: String, parameters: JSONValue, referenceCount: Int,
-        source: URL? = nil,
+        source: URL? = nil, group: UUID? = nil,
         progress: @escaping JobProgress
     ) async throws -> JobOutput {
+        // Imagen en la que estabas al lanzar la petición: el resultado solo se selecciona si sigues en ella.
+        let origin = focusedURL
         let job = ActiveJob(label: modelName, status: "Enviando")
         activeJobs.insert(job, at: 0)
         defer { activeJobs.removeAll { $0.id == job.id } }
@@ -316,9 +399,28 @@ final class AppState: ObservableObject {
         )
         history.add(stored)
         if let source { parents[stored.fileURL] = source }
-        // El resultado nuevo pasa a ser la imagen seleccionada: se puede seguir editando.
-        focusedURL = stored.fileURL
+        if let group { resultGroups[stored.fileURL] = group }
+        reveal(stored.fileURL, label: modelName, origin: origin, group: group)
         return JobOutput(stored: stored, data: download.data, result: result, submitted: submitted)
+    }
+
+    /// Selección estable: el resultado pasa a la pantalla solo si sigues en la imagen de la que sale
+    /// (o en Generar sin imagen). Si no, se marca «Nuevo» en la tira y aparece un aviso discreto.
+    private func reveal(_ url: URL, label: String, origin: URL?, group: UUID?) {
+        if focusedURL == origin {
+            focusedURL = url
+            return
+        }
+        unseenResults.insert(url)
+        // Las demás variantes de la petición que ya estás viendo no necesitan aviso.
+        let sameRequest = group != nil && focusedURL.flatMap { resultGroups[$0] } == group
+        if !sameRequest {
+            readyNotice = ReadyNotice(url: url, label: label)
+        }
+    }
+
+    func isUnseen(_ url: URL) -> Bool {
+        unseenResults.contains(url)
     }
 
     private func setJobStatus(_ id: UUID, _ phase: ResultSlot.Phase) {
@@ -359,12 +461,37 @@ final class AppState: ObservableObject {
 
     func useAsReference(_ url: URL) {
         addReferences([url])
-        tool = .generate
+        selectTool(.generate)
+    }
+
+    /// Cambia de herramienta conservando lo escrito. En Vídeo se elige el modo que encaja
+    /// con lo seleccionado (imagen → Imagen a vídeo; vídeo → Continuar).
+    func selectTool(_ newTool: WorkspaceTool) {
+        guard !(newTool.needsImage && VideoModel.isVideo(focusedURL)) else { return }
+        if newTool == .video, let url = focusedURL {
+            if VideoModel.isVideo(url) {
+                if ![VideoModel.Mode.v2v, .edit, .upscale].contains(video.mode) { video.mode = .v2v }
+            } else {
+                video.mode = .i2v
+                if video.keyframes.isEmpty { video.addKeyframes([url]) }
+            }
+        }
+        tool = newTool
         mode = .generate
     }
 
-    /// «Generar» desde la barra lateral: empezar de cero (sin imagen, prompt ni referencias,
-    /// con los parámetros por defecto). La tira, el Historial y lo que esté en marcha no se tocan.
+    /// «Nuevo» (⌘N): pide confirmación si se perdería algo escrito.
+    func requestNew() {
+        let hasWork = !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !references.isEmpty
+        if hasWork {
+            confirmNew = true
+        } else {
+            startFresh()
+        }
+    }
+
+    /// Empezar de cero (sin imagen, prompt ni referencias, con los parámetros por defecto).
+    /// La tira, el Historial y lo que esté en marcha no se tocan.
     func startFresh() {
         focusedURL = nil
         prompt = ""
@@ -378,9 +505,9 @@ final class AppState: ObservableObject {
 
     /// Selecciona una imagen en el Estudio (y opcionalmente una herramienta).
     func focus(_ url: URL, tool: WorkspaceTool? = nil) {
+        history.includeInSession(url)
         focusedURL = url
-        if let tool { self.tool = tool }
-        mode = .generate
+        if let tool { selectTool(tool) } else { mode = .generate }
     }
 
     func send(_ url: URL, to target: AppMode) {
@@ -393,14 +520,6 @@ final class AppState: ObservableObject {
         case .tryOn: tool = .tryOn
         case .video: tool = .video
         default: tool = .generate
-        }
-        if target == .video {
-            if VideoModel.isVideo(url) {
-                video.mode = .v2v
-            } else {
-                video.mode = .i2v
-                if video.keyframes.isEmpty { video.addKeyframes([url]) }
-            }
         }
         focus(url, tool: tool)
     }

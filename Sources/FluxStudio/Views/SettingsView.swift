@@ -138,7 +138,7 @@ struct SettingsView: View {
                         ForEach(OutputFormat.allCases) { Text($0.label).tag($0) }
                     }
                     .frame(maxWidth: 340)
-                    Text("Se usa en las herramientas que lo admiten (Outpainting, Borrar, Deblur, Probador). FLUX 3 Image elige el formato él solo.")
+                    Text("Se usa en las herramientas que lo admiten (Ampliar, Borrar, Deblur, Probador). FLUX 3 Image elige el formato él solo.")
                         .font(.system(size: 11))
                         .foregroundStyle(Theme.textSecondary)
                 }

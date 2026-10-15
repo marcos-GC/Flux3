@@ -18,22 +18,22 @@ struct SidebarView: View {
                 .padding(.bottom, 14)
                 .help("FLUX Studio")
 
+            SidebarItem(icon: "plus.square", title: "Nuevo", isSelected: false,
+                        help: "Empezar de cero: sin imagen, prompt ni referencias (⌘N)") {
+                state.requestNew()
+            }
+            Divider().frame(width: 40).padding(.vertical, 4)
+
             ForEach(WorkspaceTool.allCases) { tool in
-                let disabled = tool.needsImage && state.focusedURL == nil
+                let reason = disabledReason(tool)
                 SidebarItem(
                     icon: tool.icon,
                     title: tool.title,
                     isSelected: state.mode == .generate && state.tool == tool,
-                    disabled: disabled,
-                    help: disabled ? "\(tool.help). Selecciona o genera una imagen primero."
-                        : (tool == .generate ? "Empezar de cero: nueva imagen con FLUX 3 Image" : tool.help)
+                    disabled: reason != nil,
+                    help: reason.map { "\(tool.help). \($0)" } ?? tool.help
                 ) {
-                    if tool == .generate {
-                        state.startFresh()
-                    } else {
-                        state.tool = tool
-                        state.mode = .generate
-                    }
+                    state.selectTool(tool)
                 }
             }
 
@@ -62,6 +62,13 @@ struct SidebarView: View {
         .frame(width: 78)
         .frame(maxHeight: .infinity)
         .background(Theme.surface)
+    }
+
+    /// Por qué una herramienta no se puede usar ahora (nil = disponible).
+    private func disabledReason(_ tool: WorkspaceTool) -> String? {
+        guard tool.needsImage else { return nil }
+        guard let url = state.focusedURL else { return "Selecciona o genera una imagen primero." }
+        return VideoModel.isVideo(url) ? "No funciona con vídeos: selecciona una imagen." : nil
     }
 }
 

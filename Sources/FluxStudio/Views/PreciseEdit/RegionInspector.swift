@@ -48,7 +48,7 @@ struct RegionInspector: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            .help("Editar: cambia lo de dentro · Nuevo: crea algo · Mover: lleva un elemento a otra caja · Ancla: no cambiar")
+            .help("Editar: cambia lo de dentro · Nuevo: crea algo · Mover: lleva un elemento a otra caja · Proteger: que no cambie")
 
             if region.kind == .anchor {
                 Text("Esta zona se mantendrá exactamente igual.")

@@ -89,6 +89,25 @@ public enum ImageEncoder {
         return (w, h)
     }
 
+    /// Tamaño que tendrá la imagen al enviarla (orientación aplicada, lado largo ≤ maxDimension),
+    /// sin decodificarla. Puede diferir en 1 px del redondeo real de `encode`.
+    public static func uploadSize(fileURL: URL, maxDimension: Int = defaultMaxDimension) -> (width: Int, height: Int)? {
+        guard let source = CGImageSourceCreateWithURL(fileURL as CFURL, nil),
+              let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              var w = props[kCGImagePropertyPixelWidth] as? Int,
+              var h = props[kCGImagePropertyPixelHeight] as? Int, w > 0, h > 0 else { return nil }
+        // Orientaciones EXIF 5–8 giran la imagen 90°.
+        if let orientation = props[kCGImagePropertyOrientation] as? Int, (5...8).contains(orientation) {
+            swap(&w, &h)
+        }
+        let longSide = max(w, h)
+        guard longSide > maxDimension else { return (w, h) }
+        let scale = Double(maxDimension) / Double(longSide)
+        return w >= h
+            ? (maxDimension, max(1, Int((Double(h) * scale).rounded())))
+            : (max(1, Int((Double(w) * scale).rounded())), maxDimension)
+    }
+
     /// Miniatura rápida para mostrar en la interfaz.
     public static func thumbnail(fileURL: URL, maxPixelSize: Int) -> CGImage? {
         guard let source = CGImageSourceCreateWithURL(fileURL as CFURL, nil) else { return nil }

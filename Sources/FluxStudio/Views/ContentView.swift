@@ -15,9 +15,15 @@ struct ContentView: View {
         }
         .background(Theme.background)
         .ignoresSafeArea()
-        .frame(minWidth: 1000, minHeight: 680)
+        .frame(minWidth: 1000, minHeight: 720)
         .preferredColorScheme(.light)
         .tint(Theme.textPrimary)
+        .confirmationDialog("¿Empezar de cero?", isPresented: $state.confirmNew) {
+            Button("Empezar de cero", role: .destructive) { state.startFresh() }
+            Button("Cancelar", role: .cancel) {}
+        } message: {
+            Text("Se quitan el prompt, las referencias y la imagen seleccionada. Los resultados siguen en la tira y en el Historial.")
+        }
         .alert(item: $state.alert) { alert in
             if alert.opensSettings {
                 return Alert(

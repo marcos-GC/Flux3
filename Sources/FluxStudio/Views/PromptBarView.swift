@@ -66,7 +66,7 @@ struct PromptBarView: View {
                     Chip(icon: "slider.horizontal.3", text: "Ajustes", isActive: showSettings)
                 }
                 .buttonStyle(.plain)
-                .help("Tolerancia de seguridad y grounding")
+                .help("Tolerancia de seguridad y consulta en internet")
                 .popover(isPresented: $showSettings, arrowEdge: .bottom) {
                     ImageSettingsPopover()
                         .environmentObject(state)
@@ -91,7 +91,7 @@ struct PromptBarView: View {
                         .help("Deja de esperar los resultados. BFL puede cobrar igualmente si ya habían empezado.")
                 }
 
-                Button { state.generateImage() } label: {
+                Button { state.requestGenerate() } label: {
                     Image(systemName: "arrow.up")
                         .font(.system(size: 15, weight: .bold))
                         .foregroundStyle(.white)
@@ -109,6 +109,14 @@ struct PromptBarView: View {
         .surfaceStyle(cornerRadius: Theme.cornerPromptBar)
         .padding(.horizontal, 28)
         .onAppear { focused = true }
+        .confirmationDialog("¿Qué hago con la imagen seleccionada?", isPresented: $state.askFocusedUse) {
+            Button("Editar esta imagen") { state.generateImage(using: .edit) }
+            Button("Usarla como referencia") { state.generateImage(using: .reference) }
+            Button("Crear una imagen nueva") { state.generateImage(using: .ignore) }
+            Button("Cancelar", role: .cancel) {}
+        } message: {
+            Text("Editar: el prompt describe el cambio que quieres en ella. Referencia: se suma a las referencias para inspirar una imagen nueva. Nueva: se ignora y solo cuenta el prompt.")
+        }
     }
 }
 
@@ -124,11 +132,11 @@ private struct ImageSettingsPopover: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 Toggle(isOn: $state.imageParams.grounding) {
-                    Text("Grounding (búsqueda externa)").font(.system(size: 13))
+                    Text("Consultar referencias en internet").font(.system(size: 13))
                 }
                 .toggleStyle(.switch)
                 .controlSize(.small)
-                Text("Permite al modelo apoyarse en búsquedas web para sujetos reales.")
+                Text("El modelo busca en internet cómo son personas, lugares o productos reales que nombres.")
                     .font(.system(size: 11))
                     .foregroundStyle(Theme.textSecondary)
             }

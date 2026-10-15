@@ -64,8 +64,8 @@ struct PreciseEditBar: View {
                     selection: $model.resolution, label: { Flux3Image.resolutionLabel($0) }
                 )
                 ChipPicker(
-                    icon: "square.grid.2x2", title: "Número de resultados", options: [1, 2, 3, 4],
-                    selection: $model.count, label: { $0 == 1 ? "1 resultado" : "\($0) resultados" }
+                    icon: "square.grid.2x2", title: "Número de imágenes", options: [1, 2, 3, 4],
+                    selection: $model.count, label: { $0 == 1 ? "1 imagen" : "\($0) imágenes" }
                 )
                 Button { showSettings.toggle() } label: {
                     Chip(icon: "slider.horizontal.3", text: "Ajustes", isActive: showSettings)
@@ -74,7 +74,7 @@ struct PreciseEditBar: View {
                 .popover(isPresented: $showSettings, arrowEdge: .bottom) {
                     VStack(alignment: .leading, spacing: 14) {
                         SafetyToleranceControl(value: $model.safety, range: SafetyTolerance.range(for: .flux3Image))
-                        Toggle("Grounding (búsqueda externa)", isOn: $model.grounding)
+                        Toggle("Consultar referencias en internet", isOn: $model.grounding)
                             .toggleStyle(.switch)
                             .controlSize(.small)
                     }

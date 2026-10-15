@@ -49,6 +49,21 @@ final class ImageEncoderTests: XCTestCase {
         XCTAssertEqual(Array(pngBytes.prefix(4)), [0x89, 0x50, 0x4E, 0x47]) // cabecera PNG
     }
 
+    func testUploadSizeMatchesEncodeWithoutDecoding() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        for (w, h) in [(3000, 2000), (1200, 3100), (800, 600)] {
+            let url = dir.appendingPathComponent("\(w)x\(h).png")
+            try makePNG(width: w, height: h, alpha: false).write(to: url)
+            let size = try XCTUnwrap(ImageEncoder.uploadSize(fileURL: url))
+            let encoded = try ImageEncoder.encode(fileURL: url)
+            XCTAssertLessThanOrEqual(abs(size.width - encoded.pixelWidth), 1)
+            XCTAssertLessThanOrEqual(abs(size.height - encoded.pixelHeight), 1)
+        }
+        XCTAssertNil(ImageEncoder.uploadSize(fileURL: dir.appendingPathComponent("no-existe.png")))
+    }
+
     func testUnreadableData() {
         XCTAssertThrowsError(try ImageEncoder.encode(data: Data("no es una imagen".utf8))) { error in
             XCTAssertEqual(error as? ImageEncoder.EncodeError, .unreadable)

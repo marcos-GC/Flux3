@@ -2,21 +2,37 @@ import AppKit
 import FluxCore
 import SwiftUI
 
-/// Imagen de entrada de una herramienta, ya preparada para enviar.
-struct ToolImage {
+/// Imagen de entrada de una herramienta. Se muestra al momento y se prepara para enviar
+/// (reducir y codificar) solo al generar, no al seleccionarla.
+@MainActor
+final class ToolImage {
     let url: URL
     let image: NSImage
-    let encoded: ImageEncoder.Encoded
+    /// Tamaño en píxeles de lo que se enviará (puede ser menor que el original).
+    let size: CGSize
+    private var prepared: ImageEncoder.Encoded?
 
-    /// Tamaño en píxeles de lo que se envía (puede ser menor que el original).
-    var size: CGSize { CGSize(width: encoded.pixelWidth, height: encoded.pixelHeight) }
+    private init(url: URL, image: NSImage, size: CGSize) {
+        self.url = url
+        self.image = image
+        self.size = size
+    }
 
     static func load(_ url: URL) async throws -> ToolImage {
+        let size = await Task.detached(priority: .userInitiated) { ImageEncoder.uploadSize(fileURL: url) }.value
+        guard let size, let image = NSImage(contentsOf: url) else { throw ImageEncoder.EncodeError.unreadable }
+        return ToolImage(url: url, image: image, size: CGSize(width: size.width, height: size.height))
+    }
+
+    /// Imagen lista para enviar (se calcula la primera vez y se reutiliza).
+    func encoded() async throws -> ImageEncoder.Encoded {
+        if let prepared { return prepared }
+        let url = url
         let encoded = try await Task.detached(priority: .userInitiated) {
             try ImageEncoder.encode(fileURL: url)
         }.value
-        guard let image = NSImage(contentsOf: url) else { throw ImageEncoder.EncodeError.unreadable }
-        return ToolImage(url: url, image: image, encoded: encoded)
+        prepared = encoded
+        return encoded
     }
 }
 
@@ -44,6 +60,16 @@ final class ToolRunner: ObservableObject {
         state: AppState, endpoint: BFLEndpoint, modelName: String, prompt: String, body: Body,
         referenceCount: Int = 0, source: URL? = nil
     ) {
+        run(state: state, endpoint: endpoint, modelName: modelName, prompt: prompt,
+            referenceCount: referenceCount, source: source) { body }
+    }
+
+    /// Igual, pero el cuerpo se prepara al lanzar (p. ej. codificar la imagen de entrada).
+    func run<Body: Encodable & Sendable>(
+        state: AppState, endpoint: BFLEndpoint, modelName: String, prompt: String,
+        referenceCount: Int = 0, source: URL? = nil,
+        prepare: @escaping @MainActor () async throws -> Body
+    ) {
         guard !isRunning else { return }
         let client: BFLClient
         do {
@@ -52,11 +78,14 @@ final class ToolRunner: ObservableObject {
             state.alert = AppAlert(title: "Falta la API key", message: error.localizedDescription, opensSettings: true)
             return
         }
-        let parameters = (try? JSONValue(encoding: body))?.strippingLargeStrings() ?? .null
         isRunning = true
-        status = "Enviando"
+        status = "Preparando imagen"
         task = Task { [weak self] in
             do {
+                let body = try await prepare()
+                try Task.checkCancellation()
+                let parameters = (try? JSONValue(encoding: body))?.strippingLargeStrings() ?? .null
+                self?.status = "Enviando"
                 let output = try await state.runJob(
                     client: client, endpoint: endpoint, body: body, modelName: modelName,
                     prefix: endpoint.filePrefix, index: 0, prompt: prompt, sentPrompt: prompt,
@@ -141,7 +170,7 @@ class BaseToolModel: ObservableObject {
     }
 }
 
-// MARK: - Outpainting
+// MARK: - Ampliar
 
 @MainActor
 final class OutpaintModel: BaseToolModel {
@@ -203,13 +232,25 @@ final class OutpaintModel: BaseToolModel {
 
     func generate(state: AppState) {
         guard let input else { return }
-        let body = OutpaintRequest(
-            inputImage: input.encoded.base64, width: Int(canvasSize.width), height: Int(canvasSize.height),
-            prompt: prompt, offset: offset, autoCrop: autoCrop, mode: mode, disablePup: disablePup,
-            safetyTolerance: safety, outputFormat: format
-        )
-        let description = prompt.isEmpty ? "Outpainting \(Int(canvasSize.width))×\(Int(canvasSize.height))" : prompt
-        runner.run(state: state, endpoint: .outpaint, modelName: "Outpainting", prompt: description, body: body, source: input.url)
+        let canvas = canvasSize, offset = offset
+        let prompt = prompt, autoCrop = autoCrop, mode = mode, disablePup = disablePup
+        let safety = safety, format = format
+        let description = prompt.isEmpty ? "Ampliar \(Int(canvas.width))×\(Int(canvas.height))" : prompt
+        runner.run(state: state, endpoint: .outpaint, modelName: "Ampliar", prompt: description, source: input.url) {
+            let encoded = try await input.encoded()
+            // El tamaño real puede diferir en 1 px del calculado: el lienzo nunca es menor que la imagen.
+            let source = CGSize(width: encoded.pixelWidth, height: encoded.pixelHeight)
+            let width = max(Int(canvas.width), encoded.pixelWidth)
+            let height = max(Int(canvas.height), encoded.pixelHeight)
+            let fitted = offset.map {
+                OutpaintGeometry.clamp($0, source: source, canvas: CGSize(width: width, height: height))
+            }
+            return OutpaintRequest(
+                inputImage: encoded.base64, width: width, height: height,
+                prompt: prompt, offset: fitted, autoCrop: autoCrop, mode: mode, disablePup: disablePup,
+                safetyTolerance: safety, outputFormat: format
+            )
+        }
     }
 }
 
@@ -256,21 +297,26 @@ final class EraseModel: BaseToolModel {
 
     var maskIsEmpty: Bool { MaskRenderer.isEmpty(strokes: strokes, inverted: inverted) }
 
+    struct MaskError: LocalizedError {
+        var errorDescription: String? { "No se ha podido crear la máscara." }
+    }
+
     func generate(state: AppState) {
         guard let input, !maskIsEmpty else { return }
-        // La máscara se genera al tamaño exacto de la imagen que se envía.
-        guard let mask = MaskRenderer.pngData(
-            strokes: strokes, inverted: inverted,
-            width: input.encoded.pixelWidth, height: input.encoded.pixelHeight
-        ) else {
-            state.alert = AppAlert(title: "Máscara no válida", message: "No se ha podido crear la máscara.")
-            return
+        let strokes = strokes, inverted = inverted, dilate = Int(dilatePixels)
+        let seed = seed, safety = safety, format = format
+        runner.run(state: state, endpoint: .erase, modelName: "Borrar", prompt: "Borrar zona pintada", source: input.url) {
+            let encoded = try await input.encoded()
+            // La máscara se genera al tamaño exacto de la imagen que se envía.
+            guard let mask = MaskRenderer.pngData(
+                strokes: strokes, inverted: inverted,
+                width: encoded.pixelWidth, height: encoded.pixelHeight
+            ) else { throw MaskError() }
+            return EraseRequest(
+                image: encoded.base64, mask: mask.base64EncodedString(),
+                dilatePixels: dilate, seed: seed, safetyTolerance: safety, outputFormat: format
+            )
         }
-        let body = EraseRequest(
-            image: input.encoded.base64, mask: mask.base64EncodedString(),
-            dilatePixels: Int(dilatePixels), seed: seed, safetyTolerance: safety, outputFormat: format
-        )
-        runner.run(state: state, endpoint: .erase, modelName: "Borrar", prompt: "Borrar zona pintada", body: body, source: input.url)
     }
 }
 
@@ -284,12 +330,15 @@ final class DeblurModel: BaseToolModel {
 
     func generate(state: AppState) {
         guard let input else { return }
-        let body = DeblurRequest(image: input.encoded.base64, seed: seed, safetyTolerance: safety, outputFormat: format)
-        runner.run(state: state, endpoint: .deblur, modelName: "Deblur", prompt: "Quitar desenfoque", body: body, source: input.url)
+        let seed = seed, safety = safety, format = format
+        runner.run(state: state, endpoint: .deblur, modelName: "Deblur", prompt: "Quitar desenfoque", source: input.url) {
+            let encoded = try await input.encoded()
+            return DeblurRequest(image: encoded.base64, seed: seed, safetyTolerance: safety, outputFormat: format)
+        }
     }
 }
 
-// MARK: - Probador virtual
+// MARK: - Probador
 
 @MainActor
 final class TryOnModel: BaseToolModel {
@@ -325,9 +374,13 @@ final class TryOnModel: BaseToolModel {
 
     func generate(state: AppState) {
         guard let input, let garment else { return }
-        let body = TryOnRequest(prompt: prompt, person: input.encoded.base64, garment: garment.encoded.base64,
+        let prompt = prompt, seed = seed, safety = safety, format = format
+        runner.run(state: state, endpoint: .vto, modelName: "Probador", prompt: prompt,
+                   referenceCount: 1, source: input.url) {
+            let person = try await input.encoded()
+            let clothing = try await garment.encoded()
+            return TryOnRequest(prompt: prompt, person: person.base64, garment: clothing.base64,
                                 seed: seed, safetyTolerance: safety, outputFormat: format)
-        runner.run(state: state, endpoint: .vto, modelName: "Probador virtual", prompt: prompt, body: body,
-                   referenceCount: 1, source: input.url)
+        }
     }
 }

@@ -2,7 +2,8 @@ import AppKit
 import FluxCore
 import SwiftUI
 
-/// Tira vertical de resultados (como el editor de Midjourney): lo más reciente arriba.
+/// Tira vertical de resultados de esta sesión (como el editor de Midjourney): lo más reciente arriba.
+/// Lo de sesiones anteriores está en el Historial.
 struct ResultStrip: View {
     @EnvironmentObject private var state: AppState
     @EnvironmentObject private var history: HistoryStore
@@ -44,17 +45,33 @@ struct ResultStrip: View {
                         if state.isGenerating && state.activeJobs.isEmpty {
                             ShimmerView(cornerRadius: 8).frame(height: 96)
                         }
-                        ForEach(history.items) { item in
-                            StripThumb(item: item, selected: item.fileURL == state.focusedURL)
+                        ForEach(history.sessionItems) { item in
+                            StripThumb(item: item, selected: item.fileURL == state.focusedURL,
+                                       isNew: state.isUnseen(item.fileURL))
                                 .id(item.id)
                                 .onTapGesture { state.focusedURL = item.fileURL }
+                        }
+                        if history.sessionItems.isEmpty && state.activeJobs.isEmpty && !state.isGenerating {
+                            VStack(spacing: 6) {
+                                Image(systemName: "square.stack")
+                                    .font(.system(size: 18, weight: .light))
+                                Text("Aquí aparecerá lo que generes en esta sesión.")
+                                Button("Ver el Historial") { state.mode = .history }
+                                    .buttonStyle(.plain)
+                                    .foregroundStyle(Theme.action)
+                                    .font(.system(size: 11, weight: .medium))
+                            }
+                            .font(.system(size: 11))
+                            .multilineTextAlignment(.center)
+                            .foregroundStyle(Theme.textSecondary)
+                            .padding(.top, 24)
                         }
                     }
                     .padding(.horizontal, 10)
                     .padding(.bottom, 16)
                 }
                 .onChange(of: state.focusedURL) {
-                    if let id = history.items.first(where: { $0.fileURL == state.focusedURL })?.id {
+                    if let id = history.sessionItems.first(where: { $0.fileURL == state.focusedURL })?.id {
                         withAnimation { proxy.scrollTo(id, anchor: .center) }
                     }
                 }
@@ -67,6 +84,7 @@ struct ResultStrip: View {
 private struct StripThumb: View {
     let item: StoredResult
     let selected: Bool
+    var isNew = false
     @State private var thumbnail: NSImage?
 
     var body: some View {
@@ -86,6 +104,17 @@ private struct StripThumb: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     .padding(4)
             }
+            if isNew {
+                Text("Nuevo")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(Theme.action))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                    .padding(4)
+                    .help("Resultado nuevo que aún no has abierto")
+            }
         }
         .frame(maxWidth: .infinity)
         .aspectRatio(thumbnail.map { $0.size.width / max($0.size.height, 1) } ?? 1, contentMode: .fit)
@@ -95,7 +124,7 @@ private struct StripThumb: View {
                 .strokeBorder(selected ? Theme.textPrimary : Theme.border, lineWidth: selected ? 2.5 : 1)
         )
         .contentShape(Rectangle())
-        .help("\(item.record.model): \(item.record.prompt)")
+        .help("\(ToolNames.display(item.record.model)): \(item.record.prompt)")
         .contextMenu { ResultActions(fileURL: item.fileURL, record: item.record) }
         .onDrag { NSItemProvider(contentsOf: item.fileURL) ?? NSItemProvider() }
         .task(id: item.fileURL) {

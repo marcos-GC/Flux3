@@ -24,14 +24,43 @@ struct ResultActions: View {
         if let record {
             Button("Reutilizar prompt y parámetros") { state.reuse(record) }
         }
-        Button("Usar como referencia") { state.useAsReference(fileURL) }
+        if !VideoModel.isVideo(fileURL) {
+            Button("Usar como referencia") { state.useAsReference(fileURL) }
+        }
         Menu("Enviar a") {
-            Button("Editar con precisión") { state.send(fileURL, to: .preciseEdit) }
-            Button("Outpainting") { state.send(fileURL, to: .outpaint) }
-            Button("Borrar") { state.send(fileURL, to: .erase) }
-            Button("Deblur") { state.send(fileURL, to: .deblur) }
-            Button("Probador virtual (como persona)") { state.send(fileURL, to: .tryOn) }
-            Button("Imagen a vídeo") { state.send(fileURL, to: .video) }
+            SendToButtons(fileURL: fileURL)
+        }
+    }
+}
+
+/// Opciones de «Enviar a», con los mismos nombres que la barra lateral.
+struct SendToButtons: View {
+    @EnvironmentObject private var state: AppState
+    let fileURL: URL
+    var onSend: () -> Void = {}
+
+    var body: some View {
+        if VideoModel.isVideo(fileURL) {
+            Button("Vídeo (continuar, editar o escalar)") {
+                onSend()
+                state.send(fileURL, to: .video)
+            }
+        } else {
+            imageTools
+        }
+    }
+
+    @ViewBuilder
+    private var imageTools: some View {
+        ForEach([AppMode.preciseEdit, .erase, .outpaint, .deblur, .tryOn], id: \.self) { mode in
+            Button(mode == .tryOn ? "\(mode.title) (como persona)" : mode.title) {
+                onSend()
+                state.send(fileURL, to: mode)
+            }
+        }
+        Button("Vídeo (imagen a vídeo)") {
+            onSend()
+            state.send(fileURL, to: .video)
         }
     }
 }
