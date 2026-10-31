@@ -62,6 +62,27 @@ final class HistoryStore: ObservableObject {
         }
     }
 
+    /// Todo lo guardado agrupado por día, lo más reciente primero (la tira de la derecha).
+    struct DayGroup: Identifiable {
+        let day: Date
+        var items: [StoredResult]
+        var id: Date { day }
+    }
+
+    var itemsByDay: [DayGroup] {
+        let calendar = Calendar.current
+        var groups: [DayGroup] = []
+        for item in items {
+            let day = calendar.startOfDay(for: item.record.createdAt)
+            if groups.last?.day == day {
+                groups[groups.count - 1].items.append(item)
+            } else {
+                groups.append(DayGroup(day: day, items: [item]))
+            }
+        }
+        return groups
+    }
+
     /// Mueve el archivo y su .json a la Papelera.
     func moveToTrash(_ result: StoredResult) {
         NSWorkspace.shared.recycle([result.fileURL, result.metadataURL]) { _, _ in }

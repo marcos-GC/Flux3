@@ -2,8 +2,8 @@ import AppKit
 import FluxCore
 import SwiftUI
 
-/// Tira vertical de resultados de esta sesión (como el editor de Midjourney): lo más reciente arriba.
-/// Lo de sesiones anteriores está en el Historial.
+/// Tira vertical con todo lo generado (también en sesiones anteriores), lo más reciente arriba
+/// y separado por días. Siempre visible, aunque se empiece de cero con «Nuevo».
 struct ResultStrip: View {
     @EnvironmentObject private var state: AppState
     @EnvironmentObject private var history: HistoryStore
@@ -45,21 +45,20 @@ struct ResultStrip: View {
                         if state.isGenerating && state.activeJobs.isEmpty {
                             ShimmerView(cornerRadius: 8).frame(height: 96)
                         }
-                        ForEach(history.sessionItems) { item in
-                            StripThumb(item: item, selected: item.fileURL == state.focusedURL,
-                                       isNew: state.isUnseen(item.fileURL))
-                                .id(item.id)
-                                .onTapGesture { state.focusedURL = item.fileURL }
+                        ForEach(history.itemsByDay) { group in
+                            DayHeader(day: group.day)
+                            ForEach(group.items) { item in
+                                StripThumb(item: item, selected: item.fileURL == state.focusedURL,
+                                           isNew: state.isUnseen(item.fileURL))
+                                    .id(item.id)
+                                    .onTapGesture { state.focusedURL = item.fileURL }
+                            }
                         }
-                        if history.sessionItems.isEmpty && state.activeJobs.isEmpty && !state.isGenerating {
+                        if history.items.isEmpty && state.activeJobs.isEmpty && !state.isGenerating {
                             VStack(spacing: 6) {
                                 Image(systemName: "square.stack")
                                     .font(.system(size: 18, weight: .light))
-                                Text("Aquí aparecerá lo que generes en esta sesión.")
-                                Button("Ver el Historial") { state.mode = .history }
-                                    .buttonStyle(.plain)
-                                    .foregroundStyle(Theme.action)
-                                    .font(.system(size: 11, weight: .medium))
+                                Text(history.isLoading ? "Cargando…" : "Aquí aparecerá todo lo que generes.")
                             }
                             .font(.system(size: 11))
                             .multilineTextAlignment(.center)
@@ -71,13 +70,35 @@ struct ResultStrip: View {
                     .padding(.bottom, 16)
                 }
                 .onChange(of: state.focusedURL) {
-                    if let id = history.sessionItems.first(where: { $0.fileURL == state.focusedURL })?.id {
+                    if let id = history.items.first(where: { $0.fileURL == state.focusedURL })?.id {
                         withAnimation { proxy.scrollTo(id, anchor: .center) }
                     }
                 }
             }
         }
         .background(Theme.surface)
+    }
+}
+
+/// Separador de día en la tira: «Hoy», «Ayer» o la fecha.
+private struct DayHeader: View {
+    let day: Date
+
+    private var title: String {
+        let calendar = Calendar.current
+        if calendar.isDateInToday(day) { return "Hoy" }
+        if calendar.isDateInYesterday(day) { return "Ayer" }
+        let sameYear = calendar.isDate(day, equalTo: Date(), toGranularity: .year)
+        return day.formatted(sameYear ? .dateTime.day().month(.abbreviated) : .dateTime.day().month(.abbreviated).year())
+    }
+
+    var body: some View {
+        Text(title.uppercased())
+            .font(.system(size: 9, weight: .semibold))
+            .tracking(0.6)
+            .foregroundStyle(Theme.textSecondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 6)
     }
 }
 
