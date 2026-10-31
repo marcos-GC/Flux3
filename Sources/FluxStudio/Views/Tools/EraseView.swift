@@ -118,10 +118,7 @@ private struct MaskCanvas: View {
     }
 
     private func activeGesture(frame: CGRect) -> AnyGesture<DragGesture.Value> {
-        if model.shape == .polygon {
-            return AnyGesture(polygonGesture(frame: frame))
-        }
-        return AnyGesture(paintGesture(frame: frame))
+        model.shape == .polygon ? polygonGesture(frame: frame) : paintGesture(frame: frame)
     }
 
     /// Distancia (en puntos de pantalla) a la que un clic sobre el primer vértice cierra el polígono.
@@ -132,8 +129,8 @@ private struct MaskCanvas: View {
     }
 
     /// Polígono: cada clic añade un vértice; un clic sobre el primero lo cierra.
-    private func polygonGesture(frame: CGRect) -> some Gesture {
-        DragGesture(minimumDistance: 0, coordinateSpace: .named("mask"))
+    private func polygonGesture(frame: CGRect) -> AnyGesture<DragGesture.Value> {
+        let gesture = DragGesture(minimumDistance: 0, coordinateSpace: .named("mask"))
             .onEnded { value in
                 hover = value.location
                 if model.canClosePolygon, let first = model.pendingPolygon.first {
@@ -147,6 +144,7 @@ private struct MaskCanvas: View {
                 }
                 model.addPolygonPoint(normalized(value.location, frame: frame))
             }
+        return AnyGesture(gesture)
     }
 
     private func normalized(_ p: CGPoint, frame: CGRect) -> CGPoint {
@@ -154,8 +152,8 @@ private struct MaskCanvas: View {
                 y: min(max((p.y - frame.minY) / frame.height, 0), 1))
     }
 
-    private func paintGesture(frame: CGRect) -> some Gesture {
-        DragGesture(minimumDistance: 0, coordinateSpace: .named("mask"))
+    private func paintGesture(frame: CGRect) -> AnyGesture<DragGesture.Value> {
+        let gesture = DragGesture(minimumDistance: 0, coordinateSpace: .named("mask"))
             .onChanged { value in
                 hover = value.location
                 let point = normalized(value.location, frame: frame)
@@ -171,6 +169,7 @@ private struct MaskCanvas: View {
                 if let stroke = current { model.add(stroke) }
                 current = nil
             }
+        return AnyGesture(gesture)
     }
 
     /// Misma lógica que MaskRenderer, pero en pantalla y en violeta.
