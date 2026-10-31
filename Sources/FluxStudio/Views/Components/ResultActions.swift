@@ -11,6 +11,11 @@ struct ResultActions: View {
     var expandedPrompt: String?
 
     var body: some View {
+        if !VideoModel.isVideo(fileURL) {
+            Button("Editar esta imagen") { state.send(fileURL, to: .preciseEdit) }
+            Button("Usar como referencia") { state.useAsReference(fileURL) }
+            Divider()
+        }
         Button("Mostrar en Finder") { NSWorkspace.shared.activateFileViewerSelecting([fileURL]) }
         Button("Abrir") { NSWorkspace.shared.open(fileURL) }
         Button("Copiar imagen") { copyImage(fileURL) }
@@ -23,9 +28,6 @@ struct ResultActions: View {
         Divider()
         if let record {
             Button("Reutilizar prompt y parámetros") { state.reuse(record) }
-        }
-        if !VideoModel.isVideo(fileURL) {
-            Button("Usar como referencia") { state.useAsReference(fileURL) }
         }
         Menu("Enviar a") {
             SendToButtons(fileURL: fileURL)
@@ -63,6 +65,16 @@ struct SendToButtons: View {
             state.send(fileURL, to: .video)
         }
     }
+}
+
+/// Lo que se arrastra desde una miniatura o una imagen: la URL del archivo.
+/// Así el Estudio (y el Finder) reciben el archivo original con su extensión; con
+/// `NSItemProvider(contentsOf:)` llegaba una copia temporal sin extensión y el Estudio
+/// avisaba de «Archivo no compatible».
+func fileDragProvider(_ url: URL) -> NSItemProvider {
+    let provider = NSItemProvider(object: url as NSURL)
+    provider.suggestedName = url.lastPathComponent
+    return provider
 }
 
 func copyImage(_ url: URL) {

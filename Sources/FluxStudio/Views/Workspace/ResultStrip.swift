@@ -126,7 +126,7 @@ private struct StripThumb: View {
         .contentShape(Rectangle())
         .help("\(ToolNames.display(item.record.model)): \(item.record.prompt)")
         .contextMenu { ResultActions(fileURL: item.fileURL, record: item.record) }
-        .onDrag { NSItemProvider(contentsOf: item.fileURL) ?? NSItemProvider() }
+        .onDrag { fileDragProvider(item.fileURL) }
         .task(id: item.fileURL) {
             thumbnail = await ThumbnailLoader.load(item.fileURL, maxPixelSize: 240)
         }

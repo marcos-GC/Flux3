@@ -380,7 +380,7 @@ private struct FocusedStage: View {
                             Image(nsImage: image)
                                 .resizable()
                                 .interpolation(.high)
-                                .onDrag { NSItemProvider(contentsOf: url) ?? NSItemProvider() }
+                                .onDrag { fileDragProvider(url) }
                         }
                     }
                     .contextMenu { ResultActions(fileURL: url) }
@@ -489,9 +489,22 @@ private struct StudioDropDelegate: DropDelegate {
     }
 
     private static func loadURL(_ provider: NSItemProvider) async -> URL? {
-        await withCheckedContinuation { continuation in
-            _ = provider.loadObject(ofClass: URL.self) { url, _ in
-                continuation.resume(returning: url)
+        if provider.canLoadObject(ofClass: URL.self) {
+            let url: URL? = await withCheckedContinuation { continuation in
+                _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                    continuation.resume(returning: url)
+                }
+            }
+            if let url { return url }
+        }
+        // Algunas apps dan la URL como datos sin envolver.
+        return await withCheckedContinuation { continuation in
+            provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
+                switch item {
+                case let url as URL: continuation.resume(returning: url)
+                case let data as Data: continuation.resume(returning: URL(dataRepresentation: data, relativeTo: nil))
+                default: continuation.resume(returning: nil)
+                }
             }
         }
     }

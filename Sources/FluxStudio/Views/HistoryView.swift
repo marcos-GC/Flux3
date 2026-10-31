@@ -141,7 +141,7 @@ private struct HistoryCell: View {
                             .padding(8)
                     }
                 }
-                .onDrag { NSItemProvider(contentsOf: item.fileURL) ?? NSItemProvider() }
+                .onDrag { fileDragProvider(item.fileURL) }
 
             Text(item.record.prompt)
                 .font(.system(size: 12))
@@ -179,7 +179,7 @@ private struct HistoryDetailView: View {
                         .scaledToFit()
                         .clipShape(RoundedRectangle(cornerRadius: Theme.cornerResult, style: .continuous))
                         .padding(24)
-                        .onDrag { NSItemProvider(contentsOf: item.fileURL) ?? NSItemProvider() }
+                        .onDrag { fileDragProvider(item.fileURL) }
                 } else {
                     ProgressView()
                 }

@@ -1,5 +1,6 @@
 import AppKit
 import AVFoundation
+import ImageIO
 import FluxCore
 import UniformTypeIdentifiers
 
@@ -15,7 +16,12 @@ struct ReferenceImage: Identifiable {
     var isProcessing: Bool { encoded == nil && error == nil }
 
     static func isSupported(_ url: URL) -> Bool {
-        guard url.isFileURL, let type = UTType(filenameExtension: url.pathExtension) else { return false }
+        guard url.isFileURL else { return false }
+        if let type = UTType(filenameExtension: url.pathExtension), type.conforms(to: .image) { return true }
+        // Sin extensión reconocible (p. ej. una copia temporal): se mira el contenido.
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let identifier = CGImageSourceGetType(source) as String?,
+              let type = UTType(identifier) else { return false }
         return type.conforms(to: .image)
     }
 }
