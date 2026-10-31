@@ -308,6 +308,14 @@ private struct ImageInfoRow: View {
                         .foregroundStyle(Theme.textSecondary)
                 }
                 Spacer(minLength: 10)
+                if state.original(of: url) != nil {
+                    Button { state.goToOriginal() } label: {
+                        Chip(icon: "arrow.uturn.backward", text: "Original")
+                    }
+                    .buttonStyle(.plain)
+                    .keyboardShortcut(.upArrow, modifiers: .command)
+                    .help("Volver a la imagen original, antes de editarla (⌘↑)")
+                }
                 if showsCompare {
                     Button { compare.toggle() } label: {
                         Chip(icon: "rectangle.split.2x1", text: "Antes / Después", isActive: compare)

@@ -52,6 +52,7 @@ Descarga la última versión, la copia a **Aplicaciones** y la abre, sin el avis
 - **Derecha:** la tira con **todo lo que has generado**, también en días y sesiones anteriores, con lo más nuevo arriba y separado por días (Hoy, Ayer, fecha). No se vacía al pulsar **Nuevo**. Un clic abre la imagen en grande. Lo que se está generando aparece como un hueco animado con su estado.
 - **Encadenar:** si sigues en la imagen de la que sale un resultado, el resultado queda seleccionado, así que puedes generar → editar → borrar algo → ampliar sin salir de la pantalla.
 - **Trabajar sin esperar:** mientras algo se genera puedes pulsar **Nuevo** (⌘N), abrir otra imagen, cambiar de herramienta o lanzar otra petición (también en Editar, Borrar, Ampliar…). Lo que estaba en marcha sigue por detrás y aparece en la tira al terminar.
+- **Volver al original:** después de editar, el botón **Original** (⌘↑) vuelve a la imagen de antes de editar, sin buscarla. Está en la barra de Editar y bajo la imagen en las demás herramientas. Las ediciones siguen en la tira.
 - **Selección estable:** si mientras tanto has pasado a otra imagen, el resultado no te la cambia: aparece en la tira con la etiqueta **Nuevo** y un aviso arriba, **«Listo · Ver»**.
 - **Generar con una imagen seleccionada:** al pulsar generar, la app pregunta qué hacer con ella: **Editar esta imagen** (el prompt describe el cambio), **Usarla como referencia** o **Crear una imagen nueva** (no se usa).
 

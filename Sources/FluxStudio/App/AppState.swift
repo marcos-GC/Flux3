@@ -378,7 +378,7 @@ final class AppState: ObservableObject {
         setJobStatus(jobID, .downloading)
         progress(.downloading, nil, nil)
         let download = try await client.download(url)
-        let record = GenerationRecord(
+        var record = GenerationRecord(
             taskID: submitted.id,
             endpoint: endpoint.path,
             model: modelName,
@@ -393,6 +393,7 @@ final class AppState: ObservableObject {
             referenceCount: referenceCount,
             draftCaches: result.draftCaches.isEmpty ? nil : result.draftCaches
         )
+        record.sourceFile = source?.path
         let stored = try ResultStore.save(
             data: download.data, mimeType: download.mimeType, sourceURL: url,
             base: settings.outputFolder, prefix: prefix, index: index, record: record
@@ -524,8 +525,32 @@ final class AppState: ObservableObject {
         focus(url, tool: tool)
     }
 
+    /// Imagen de la que sale un resultado: de esta sesión o, si no, la guardada en su .json.
     func parent(of url: URL?) -> URL? {
-        url.flatMap { parents[$0] }
+        guard let url else { return nil }
+        if let parent = parents[url] { return parent }
+        guard let path = history.items.first(where: { $0.fileURL == url })?.record.sourceFile else { return nil }
+        let parent = URL(fileURLWithPath: path)
+        return FileManager.default.fileExists(atPath: parent.path) ? parent : nil
+    }
+
+    /// La imagen original de una cadena de ediciones (la primera, antes de editar nada).
+    func original(of url: URL?) -> URL? {
+        guard var current = url else { return nil }
+        var seen: Set<URL> = [current]
+        var root: URL?
+        while let parent = parent(of: current), !seen.contains(parent) {
+            seen.insert(parent)
+            root = parent
+            current = parent
+        }
+        return root
+    }
+
+    /// «Volver al original»: abre la imagen original en la misma herramienta.
+    func goToOriginal() {
+        guard let original = original(of: focusedURL) else { return }
+        focus(original, tool: tool)
     }
 
     var isGenerating: Bool {

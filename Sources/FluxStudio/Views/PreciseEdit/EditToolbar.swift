@@ -5,10 +5,32 @@ import SwiftUI
 /// Barra de regiones de Editar con precisión (estilo FLUX Tools), encima de la caja del prompt.
 struct EditToolbar: View {
     @EnvironmentObject private var model: PreciseEditModel
+    @EnvironmentObject private var state: AppState
     @Binding var confirmReset: Bool
+
+    /// Hay una imagen anterior a la que volver: la primera versión de esta sesión
+    /// o, si la imagen abierta ya era un resultado, su original guardado.
+    private var canGoToOriginal: Bool {
+        model.currentIndex != 0 || state.original(of: model.current?.fileURL) != nil
+    }
+
+    private func goToOriginal() {
+        if let first = model.versions.first?.fileURL, let original = state.original(of: first) {
+            // La imagen abierta ya salía de otra edición: se abre su original.
+            state.focus(original, tool: .edit)
+        } else {
+            model.goToVersion(0)
+        }
+    }
 
     var body: some View {
         HStack(spacing: 2) {
+            if canGoToOriginal {
+                ToolTextButton(icon: "arrow.uturn.backward", title: "Original") { goToOriginal() }
+                    .keyboardShortcut(.upArrow, modifiers: .command)
+                    .help("Volver a la imagen original, antes de editarla (⌘↑). Las ediciones siguen en la tira.")
+                divider
+            }
             ToolTextButton(icon: "plus.square", title: "Añadir región") { model.addDefaultRegion() }
                 .disabled(model.compareMode)
             ToolTextButton(icon: "square.dashed", title: model.showRegions ? "Ocultar regiones" : "Mostrar regiones",

@@ -20,6 +20,9 @@ public struct GenerationRecord: Codable, Sendable, Equatable {
     public var draftCaches: [String]?
     /// Marcada con el corazón (favorita). Opcional para leer los .json antiguos.
     public var favorite: Bool?
+    /// Ruta de la imagen de la que sale este resultado (ediciones). Sirve para «Volver al original»
+    /// también en sesiones posteriores.
+    public var sourceFile: String?
 
     public var isFavorite: Bool { favorite == true }
 

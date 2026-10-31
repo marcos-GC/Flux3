@@ -45,8 +45,10 @@ final class ResultStoreTests: XCTestCase {
         XCTAssertFalse(ResultStore.loadAll(base: base).first?.record.isFavorite ?? true)
 
         saved.record.favorite = true
+        saved.record.sourceFile = "/tmp/original.jpg"
         try ResultStore.updateRecord(saved.record, metadataURL: saved.metadataURL)
         XCTAssertTrue(ResultStore.loadAll(base: base).first?.record.isFavorite ?? false)
+        XCTAssertEqual(ResultStore.loadAll(base: base).first?.record.sourceFile, "/tmp/original.jpg")
     }
 
     func testIgnoresOrphansAndForeignJSON() throws {
