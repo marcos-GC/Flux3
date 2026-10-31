@@ -20,7 +20,7 @@ struct WorkspaceView: View {
     var body: some View {
         HStack(spacing: 0) {
             ZStack {
-                if state.tool == .edit && state.focusedURL != nil {
+                if state.tool == .edit && state.focusedURL != nil && state.compareURL == nil {
                     editLayout
                 } else {
                     standardLayout
@@ -153,7 +153,8 @@ struct WorkspaceView: View {
     }
 
     private var showsCompare: Bool {
-        state.tool != .erase && state.tool != .outpaint && state.parent(of: state.focusedURL) != nil
+        state.compareURL == nil && state.tool != .erase && state.tool != .outpaint
+            && state.parent(of: state.focusedURL) != nil
     }
 
     private func updateFocusedSize() {
@@ -174,7 +175,7 @@ struct WorkspaceView: View {
 
     @ViewBuilder
     private var stage: some View {
-        switch state.tool {
+        switch state.compareURL != nil ? WorkspaceTool.generate : state.tool {
         case .erase where state.focusedURL != nil:
             EraseStage(model: state.erase)
         case .outpaint where state.focusedURL != nil:
@@ -200,7 +201,7 @@ struct WorkspaceView: View {
         case .video:
             VideoBar(model: state.video)
         case .edit:
-            NeedsImageBar()
+            if state.compareURL != nil { CompareHintBar() } else { NeedsImageBar() }
         }
     }
 
@@ -213,7 +214,7 @@ struct WorkspaceView: View {
     private func syncTool() {
         let url = state.focusedURL
         switch state.tool {
-        case .edit: preciseEdit.sync(with: url)
+        case .edit: preciseEdit.sync(with: url, parent: state.parent(of: url))
         case .erase: state.erase.sync(with: url)
         case .outpaint: state.outpaint.sync(with: url)
         case .deblur: state.deblur.sync(with: url)
@@ -257,6 +258,26 @@ private struct ReadyToast: View {
     }
 }
 
+/// En Editar, mientras se comparan dos fotos de la galería.
+private struct CompareHintBar: View {
+    @EnvironmentObject private var state: AppState
+
+    var body: some View {
+        ToolBarContainer {
+            HStack {
+                Image(systemName: "rectangle.split.2x1").foregroundStyle(Theme.textSecondary)
+                Text("Comparando dos imágenes. Termina la comparación (Esc) para seguir editando.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.textSecondary)
+                Spacer()
+                Button("Terminar comparación") { state.compareURL = nil }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12, weight: .medium))
+            }
+        }
+    }
+}
+
 private struct NeedsImageBar: View {
     var body: some View {
         ToolBarContainer {
@@ -296,6 +317,19 @@ private struct ImageInfoRow: View {
                         .foregroundStyle(Theme.textSecondary)
                 }
                 Spacer(minLength: 10)
+                if state.compareURL != nil {
+                    Button { state.swapCompare() } label: {
+                        Chip(icon: "arrow.left.arrow.right", text: "Intercambiar")
+                    }
+                    .buttonStyle(.plain)
+                    .help("Cambiar de lado las dos imágenes")
+                    Button { state.compareURL = nil } label: {
+                        Chip(icon: "xmark", text: "Terminar comparación", isActive: true)
+                    }
+                    .buttonStyle(.plain)
+                    .keyboardShortcut(.escape, modifiers: [])
+                    .help("Volver a ver una sola imagen (Esc)")
+                }
                 if state.original(of: url) != nil {
                     Button { state.goToOriginal() } label: {
                         Chip(icon: "arrow.uturn.backward", text: "Original")
@@ -355,6 +389,7 @@ private struct FocusedStage: View {
     let compare: Bool
     @State private var image: NSImage?
     @State private var parentImage: NSImage?
+    @State private var otherImage: NSImage?
     @State private var player: AVPlayer?
     @State private var fraction: CGFloat = 0.5
 
@@ -370,7 +405,11 @@ private struct FocusedStage: View {
                     }
                 } else if let image {
                     Group {
-                        if compare, let parentImage {
+                        if state.compareURL != nil, let otherImage {
+                            // Dos fotos de la galería: la elegida para comparar a la izquierda.
+                            CompareView(before: otherImage, after: image, fraction: $fraction,
+                                        beforeLabel: "IMAGEN 1", afterLabel: "IMAGEN 2")
+                        } else if compare, let parentImage {
                             CompareView(before: parentImage, after: image, fraction: $fraction)
                         } else {
                             Image(nsImage: image)
@@ -418,6 +457,11 @@ private struct FocusedStage: View {
             if let full = await ThumbnailLoader.load(url, maxPixelSize: 3000), !Task.isCancelled {
                 image = full
             }
+        }
+        .task(id: state.compareURL) {
+            otherImage = nil
+            guard let other = state.compareURL else { return }
+            otherImage = await ThumbnailLoader.load(other, maxPixelSize: 3000)
         }
         // La imagen de «Antes» solo se carga al comparar.
         .task(id: compare) {

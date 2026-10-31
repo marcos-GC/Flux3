@@ -92,6 +92,7 @@ final class AppState: ObservableObject {
     /// Imagen seleccionada en el Estudio (todas las herramientas trabajan sobre ella).
     @Published var focusedURL: URL? {
         didSet {
+            if compareURL != nil && (focusedURL == nil || focusedURL == compareURL) { compareURL = nil }
             guard focusedURL != oldValue, let url = focusedURL else { return }
             unseenResults.remove(url)
             if readyNotice?.url == url { readyNotice = nil }
@@ -109,6 +110,8 @@ final class AppState: ObservableObject {
     @Published var confirmNew = false
     /// Imágenes pegadas con ⌘V a la espera de elegir «Editar» o «Referencia».
     @Published var pendingPaste: [URL] = []
+    /// Segunda imagen para comparar con la seleccionada (⌘-clic en la tira o «Comparar con…»).
+    @Published var compareURL: URL?
     @Published var activeJobs: [ActiveJob] = []
     /// De qué imagen sale cada resultado (para Antes / Después).
     @Published private(set) var parents: [URL: URL] = [:]
@@ -547,6 +550,24 @@ final class AppState: ObservableObject {
             current = parent
         }
         return root
+    }
+
+    /// Compara una imagen con la seleccionada en grande (si no hay ninguna, la selecciona).
+    func compare(with url: URL) {
+        guard !VideoModel.isVideo(url) else { return }
+        mode = .generate
+        guard let focused = focusedURL, focused != url, !VideoModel.isVideo(focused) else {
+            focus(url)
+            return
+        }
+        compareURL = url
+    }
+
+    func swapCompare() {
+        guard let other = compareURL, let focused = focusedURL else { return }
+        compareURL = nil
+        focusedURL = other
+        compareURL = focused
     }
 
     /// «Volver al original»: abre la imagen original en la misma herramienta.

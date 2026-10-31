@@ -93,17 +93,29 @@ final class PreciseEditModel: ObservableObject {
 
     // MARK: - Imagen
 
-    func load(_ url: URL) {
-        guard let image = NSImage(contentsOf: url) else {
+    /// Abre una imagen. Si sale de una edición (`parent`), la imagen de la que sale se carga
+    /// como versión anterior, para poder comparar «Antes / Después» y volver a ella.
+    func load(_ url: URL, parent: URL? = nil) {
+        guard let version = Self.makeVersion(url, parentIndex: nil) else {
             loadError = "No se puede abrir «\(url.lastPathComponent)»."
             return
         }
-        let size = ImageEncoder.pixelSize(fileURL: url).map { CGSize(width: $0.width, height: $0.height) } ?? image.size
         reset()
-        versions = [EditVersion(fileURL: url, image: image, pixelSize: size, parentIndex: nil)]
-        currentIndex = 0
-        resolution = Self.suggestedResolution(for: size)
+        if let parent, parent != url, let before = Self.makeVersion(parent, parentIndex: nil) {
+            versions = [before, EditVersion(fileURL: url, image: version.image, pixelSize: version.pixelSize, parentIndex: 0)]
+            currentIndex = 1
+        } else {
+            versions = [version]
+            currentIndex = 0
+        }
+        resolution = Self.suggestedResolution(for: version.pixelSize)
         loadError = nil
+    }
+
+    private static func makeVersion(_ url: URL, parentIndex: Int?) -> EditVersion? {
+        guard let image = NSImage(contentsOf: url) else { return nil }
+        let size = ImageEncoder.pixelSize(fileURL: url).map { CGSize(width: $0.width, height: $0.height) } ?? image.size
+        return EditVersion(fileURL: url, image: image, pixelSize: size, parentIndex: parentIndex)
     }
 
     func reset() {
@@ -136,12 +148,18 @@ final class PreciseEditModel: ObservableObject {
 
     /// Muestra la imagen seleccionada en el Estudio: si es una versión ya conocida
     /// se conserva el trabajo (regiones); si es otra imagen, empieza de cero con ella.
-    func sync(with url: URL?) {
+    func sync(with url: URL?, parent: URL? = nil) {
         guard let url else { return }
         if let index = versions.firstIndex(where: { $0.fileURL == url }) {
             if index != currentIndex { goToVersion(index) }
+        } else if let parent, let parentIndex = versions.firstIndex(where: { $0.fileURL == parent }),
+                  let version = Self.makeVersion(url, parentIndex: parentIndex) {
+            // Un resultado de esta imagen (p. ej. una edición que acaba de llegar): se añade
+            // como versión nueva y se conservan las anteriores, las regiones y «Antes / Después».
+            versions.append(version)
+            currentIndex = versions.count - 1
         } else {
-            load(url)
+            load(url, parent: parent)
         }
     }
 
@@ -415,6 +433,11 @@ final class PreciseEditModel: ObservableObject {
     }
 
     private func appendVersion(from output: AppState.JobOutput, parent: Int, select: Bool) {
+        // Puede que ya se haya añadido al seleccionarla en el Estudio.
+        if let existing = versions.firstIndex(where: { $0.fileURL == output.stored.fileURL }) {
+            if select { currentIndex = existing }
+            return
+        }
         guard let image = NSImage(data: output.data) else { return }
         let size = ImageEncoder.pixelSize(fileURL: output.stored.fileURL).map { CGSize(width: $0.width, height: $0.height) } ?? image.size
         versions.append(EditVersion(fileURL: output.stored.fileURL, image: image, pixelSize: size, parentIndex: parent))

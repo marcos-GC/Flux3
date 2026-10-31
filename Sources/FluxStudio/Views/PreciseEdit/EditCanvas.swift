@@ -449,12 +449,17 @@ struct CompareView: View {
     let before: NSImage
     let after: NSImage
     @Binding var fraction: CGFloat
+    var beforeLabel = "ANTES"
+    var afterLabel = "DESPUÉS"
 
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .topLeading) {
-                Image(nsImage: after).resizable()
-                Image(nsImage: before).resizable()
+                // Ajustadas sin deformar (dos fotos de la galería pueden tener otra proporción).
+                Image(nsImage: after).resizable().scaledToFit()
+                    .frame(width: geo.size.width, height: geo.size.height)
+                Image(nsImage: before).resizable().scaledToFit()
+                    .frame(width: geo.size.width, height: geo.size.height)
                     .mask(alignment: .leading) {
                         Rectangle().frame(width: geo.size.width * fraction)
                     }
@@ -469,8 +474,8 @@ struct CompareView: View {
                     .overlay(Image(systemName: "arrow.left.and.right").font(.system(size: 12, weight: .bold)))
                     .shadow(radius: 3)
                     .offset(x: geo.size.width * fraction - 15, y: geo.size.height / 2 - 15)
-                label("ANTES").offset(x: 10, y: 10)
-                label("DESPUÉS").offset(x: geo.size.width - 84, y: 10)
+                label(beforeLabel).offset(x: 10, y: 10)
+                label(afterLabel).offset(x: geo.size.width - 84, y: 10)
             }
             .contentShape(Rectangle())
             .gesture(

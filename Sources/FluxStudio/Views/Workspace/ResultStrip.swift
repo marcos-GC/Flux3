@@ -51,7 +51,14 @@ struct ResultStrip: View {
                                 StripThumb(item: item, selected: item.fileURL == state.focusedURL,
                                            isNew: state.isUnseen(item.fileURL))
                                     .id(item.id)
-                                    .onTapGesture { state.focusedURL = item.fileURL }
+                                    .onTapGesture {
+                                        // ⌘-clic: comparar con la imagen en grande.
+                                        if NSEvent.modifierFlags.contains(.command) {
+                                            state.compare(with: item.fileURL)
+                                        } else {
+                                            state.focusedURL = item.fileURL
+                                        }
+                                    }
                             }
                         }
                         if history.items.isEmpty && state.activeJobs.isEmpty && !state.isGenerating {
@@ -159,7 +166,7 @@ private struct StripThumb: View {
                 .strokeBorder(selected ? Theme.textPrimary : Theme.border, lineWidth: selected ? 2.5 : 1)
         )
         .contentShape(Rectangle())
-        .help("\(ToolNames.display(item.record.model)): \(item.record.prompt)")
+        .help("\(ToolNames.display(item.record.model)): \(item.record.prompt)\n⌘-clic para compararla con la imagen en grande")
         .contextMenu { ResultActions(fileURL: item.fileURL, record: item.record) }
         .onDrag { fileDragProvider(item.fileURL) }
         .task(id: item.fileURL) {
