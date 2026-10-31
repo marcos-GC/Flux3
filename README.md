@@ -71,6 +71,7 @@ Al arrastrar una imagen sobre la pantalla aparecen dos zonas:
 |---|---|---|
 | **Generar** | Imágenes nuevas con FLUX 3 Image | Prompt, referencias (hasta 10), proporción, resolución, 1–4 imágenes, tolerancia y «Consultar referencias en internet» en «Ajustes». ⌘↩ genera. |
 | **Editar** | Cambios precisos (réplica de *Precise Editing* de BFL) | Escribe un cambio para toda la imagen o arrastra sobre ella para dibujar **regiones**, cada una con su instrucción, su imagen de referencia y su tipo (Editar, Nuevo, Mover, Proteger). «Ver prompt» enseña el texto exacto que se envía y deja editarlo. Zoom con ⌘ + rueda o pellizco; desplazamiento con espacio + arrastrar. |
+| **Rellenar** | *Pintar y rellenar*: inpainting con máscara | Pinta con el **pincel** la zona que quieres cambiar, o márcala con el **polígono** (clic en cada esquina, clic en el primer punto para cerrar) para formas exactas como el tablero de una mesa. Describe qué poner (mejor en inglés) y, si quieres, añade una imagen de **referencia**. Solo cambia lo marcado. |
 | **Borrar** | Quitar objetos | Con **Marcar**, pinta en violeta lo que sobra y pulsa ↑. **Desmarcar** solo quita pintura violeta si te has pasado (no borra nada de la imagen). También: deshacer ⌘Z, invertir y limpiar. «Ampliar máscara» suaviza el borde. |
 | **Ampliar** | Outpainting: extender la imagen | Elige la proporción del lienzo o los píxeles, arrastra la imagen dentro del lienzo y, si quieres, describe la zona nueva. |
 | **Deblur** | Quitar desenfoque | Pulsa generar. |
@@ -78,6 +79,17 @@ Al arrastrar una imagen sobre la pantalla aparecen dos zonas:
 | **Vídeo** | FLUX 3 Video | Texto a vídeo, Imagen a vídeo (1–10 fotogramas clave, con segundos opcionales), Continuar, Editar y Escalar vídeo. **Borrador rápido** para probar barato y luego «Renderizar a calidad final» (antes de una hora). |
 
 **Tolerancia de seguridad:** controla lo estricta que es la moderación de BFL (0 = muy estricto). No cambia el estilo. Va de 0 a 4 en FLUX 3 Image y Vídeo, y de 0 a 5 en Borrar, Ampliar, Deblur y Probador.
+
+### Pintar y rellenar (inpainting con máscara)
+
+FLUX 3 Image no acepta máscara, así que la app hace lo mismo que un flujo de inpainting de ComfyUI en dos pasos:
+
+1. Envía la foto entera a FLUX 3 Image con un prompt de edición que señala la caja de la zona marcada (el mismo formato que **Editar**; «Ver prompt» lo enseña).
+2. Del resultado **solo pega lo que hay dentro de la zona marcada** sobre tu foto original, con el borde suavizado. Lo de fuera queda idéntico, píxel a píxel, y a la resolución original.
+
+- **Pincel** o **Polígono** (icono del pentágono). Con el polígono, cada clic es una esquina unida a la anterior con una línea recta; clic en el primer punto (o «Cerrar forma») para cerrarla, **Esc** para descartarla y ⌘Z quita la última esquina. «Desmarcar» con el polígono recorta lo marcado (por ejemplo, el hueco de un jarrón sobre la mesa). Pincel y polígono se pueden combinar. También están en **Borrar**.
+- **Ajustes:** resolución, tolerancia, formato, **Ampliar zona** y **Suavizar borde** (por defecto 6 y 12 px para una foto de unos 2000 px; se ajustan al tamaño real). Para un cambio de material con bordes nítidos (una mesa), baja ambos a 0–4 px; si se nota la costura, súbelos. **Pegar solo en la zona pintada** se puede desactivar para guardar la imagen entera de FLUX.
+- Cuesta lo mismo que una edición de FLUX 3 Image (FLUX genera la imagen entera aunque solo se use una parte).
 
 ### Copiar prompts y «Prompts guardados»
 
@@ -132,7 +144,7 @@ Si una clave queda expuesta (por ejemplo, en una captura), bórrala en dashboard
 ## Para desarrolladores
 
 - **Swift Package** con dos módulos:
-  - `FluxCore`: cliente de la API (`BFLClient`, polling con timeout y cancelación), peticiones `Codable` de cada endpoint, construcción del prompt de Editar con precisión, máscara de Borrar, geometría de Outpainting, guardado e historial, y `PromptEnhancer` para Claude Haiku. Todo con tests.
+  - `FluxCore`: cliente de la API (`BFLClient`, polling con timeout y cancelación), peticiones `Codable` de cada endpoint, construcción del prompt de Editar con precisión, máscara de Borrar y de Pintar y rellenar (pincel y polígono, borde suavizado y pegado sobre el original), geometría de Outpainting, guardado e historial, y `PromptEnhancer` para Claude Haiku. Todo con tests.
   - `FluxStudio`: interfaz SwiftUI (MVVM sencillo, `async/await`).
 - `swift build` y `swift test` compilan y prueban el proyecto.
 - `./build_app.sh` monta `FLUX Studio.app` en `~/Applications`; `./make_dmg.sh` crea `dist/FLUX-Studio.dmg`.

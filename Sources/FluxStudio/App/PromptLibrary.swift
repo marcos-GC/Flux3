@@ -114,6 +114,9 @@ extension AppState {
             text = video.prompt
         case .outpaint:
             text = outpaint.prompt
+        case .fill:
+            text = fill.prompt
+            parameters = ["resolution": .string(fill.resolution), "safety_tolerance": .number(Double(fill.safety))]
         default:
             text = prompt
             parameters = ["aspect_ratio": .string(imageParams.aspectRatio), "resolution": .string(imageParams.resolution),
@@ -168,6 +171,12 @@ extension AppState {
             video.prompt = recipe.prompt
         case .outpaint:
             outpaint.prompt = recipe.prompt
+        case .fill:
+            fill.prompt = recipe.prompt
+            if let s = settings {
+                fill.resolution = s.resolution
+                fill.safety = s.safetyTolerance
+            }
         default:
             prompt = recipe.prompt
             if let s = settings {
@@ -202,7 +211,7 @@ extension WorkspaceTool {
     /// Herramientas con caja de texto donde pegar un prompt.
     var hasPromptField: Bool {
         switch self {
-        case .generate, .edit, .collage, .video, .outpaint: return true
+        case .generate, .edit, .fill, .collage, .video, .outpaint: return true
         case .erase, .deblur, .tryOn: return false
         }
     }

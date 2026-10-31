@@ -11,7 +11,7 @@ struct AppAlert: Identifiable {
 
 /// Herramientas del Estudio: todas trabajan sobre la imagen seleccionada.
 enum WorkspaceTool: String, CaseIterable, Identifiable {
-    case generate, edit, collage, erase, outpaint, deblur, tryOn, video
+    case generate, edit, fill, collage, erase, outpaint, deblur, tryOn, video
 
     var id: String { rawValue }
 
@@ -19,6 +19,7 @@ enum WorkspaceTool: String, CaseIterable, Identifiable {
         switch self {
         case .generate: return "Generar"
         case .edit: return "Editar"
+        case .fill: return "Rellenar"
         case .collage: return "Collage"
         case .erase: return "Borrar"
         case .outpaint: return "Ampliar"
@@ -32,6 +33,7 @@ enum WorkspaceTool: String, CaseIterable, Identifiable {
         switch self {
         case .generate: return "sparkles"
         case .edit: return "selection.pin.in.out"
+        case .fill: return "paintbrush"
         case .collage: return "square.3.layers.3d"
         case .erase: return "eraser"
         case .outpaint: return "arrow.up.left.and.arrow.down.right"
@@ -45,6 +47,7 @@ enum WorkspaceTool: String, CaseIterable, Identifiable {
         switch self {
         case .generate: return "Generar imágenes nuevas con FLUX 3 Image"
         case .edit: return "Editar: describe un cambio o dibuja regiones con instrucciones"
+        case .fill: return "Pintar y rellenar: pinta una zona (o márcala con líneas rectas) y describe qué poner; solo cambia lo pintado"
         case .collage: return "Collage: coloca objetos sobre una foto y conviértelo en una foto realista"
         case .erase: return "Borrar objetos pintando encima"
         case .outpaint: return "Ampliar: extender la imagen más allá de sus bordes"
@@ -130,6 +133,7 @@ final class AppState: ObservableObject {
     let preciseEdit: PreciseEditModel
     let outpaint: OutpaintModel
     let erase: EraseModel
+    let fill: FillModel
     let deblur: DeblurModel
     let tryOn: TryOnModel
     let video: VideoModel
@@ -145,6 +149,7 @@ final class AppState: ObservableObject {
         self.preciseEdit = PreciseEditModel()
         self.outpaint = OutpaintModel(settings: settings)
         self.erase = EraseModel(settings: settings)
+        self.fill = FillModel(settings: settings)
         self.deblur = DeblurModel(settings: settings)
         self.tryOn = TryOnModel(settings: settings)
         self.video = VideoModel(settings: settings)
@@ -364,12 +369,15 @@ final class AppState: ObservableObject {
     }
 
     typealias JobProgress = @MainActor @Sendable (ResultSlot.Phase, _ taskID: String?, _ cost: Double?) -> Void
+    /// Cambia la imagen descargada antes de guardarla (datos y tipo MIME nuevos).
+    typealias JobTransform = @Sendable (Data) async throws -> (data: Data, mimeType: String)
 
     /// Mecanismo común: enviar → esperar → descargar → guardar en disco y en el Historial.
     func runJob<Body: Encodable & Sendable>(
         client: BFLClient, endpoint: BFLEndpoint, body: Body, modelName: String, prefix: String,
         index: Int, prompt: String, sentPrompt: String, parameters: JSONValue, referenceCount: Int,
         source: URL? = nil, group: UUID? = nil,
+        transform: JobTransform? = nil,
         progress: @escaping JobProgress
     ) async throws -> JobOutput {
         // Imagen en la que estabas al lanzar la petición: el resultado solo se selecciona si sigues en ella.
@@ -395,7 +403,13 @@ final class AppState: ObservableObject {
         guard let result = final.result, let url = result.sampleURLs.first else { throw BFLError.noResult }
         setJobStatus(jobID, .downloading)
         progress(.downloading, nil, nil)
-        let download = try await client.download(url)
+        var download = try await client.download(url)
+        if let transform {
+            // P. ej. «Pintar y rellenar»: se pega el resultado sobre la foto original antes de guardarlo.
+            let (data, mimeType) = try await transform(download.data)
+            download.data = data
+            download.mimeType = mimeType
+        }
         var record = GenerationRecord(
             taskID: submitted.id,
             endpoint: endpoint.path,
@@ -546,6 +560,7 @@ final class AppState: ObservableObject {
         case .preciseEdit: tool = .edit
         case .outpaint: tool = .outpaint
         case .erase: tool = .erase
+        case .fill: tool = .fill
         case .deblur: tool = .deblur
         case .tryOn: tool = .tryOn
         case .video: tool = .video

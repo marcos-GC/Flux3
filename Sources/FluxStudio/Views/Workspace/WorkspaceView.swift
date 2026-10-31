@@ -146,6 +146,7 @@ struct WorkspaceView: View {
         guard state.focusedURL != nil else { return nil }
         switch state.tool {
         case .erase: return state.erase.input?.size ?? focusedSize
+        case .fill: return state.fill.input?.size ?? focusedSize
         case .outpaint:
             guard state.outpaint.input != nil else { return focusedSize }
             // Deja sitio al texto con el tamaño del lienzo.
@@ -155,7 +156,7 @@ struct WorkspaceView: View {
     }
 
     private var showsCompare: Bool {
-        state.compareURL == nil && state.tool != .erase && state.tool != .outpaint
+        state.compareURL == nil && state.tool != .erase && state.tool != .fill && state.tool != .outpaint
             && state.parent(of: state.focusedURL) != nil
     }
 
@@ -179,7 +180,9 @@ struct WorkspaceView: View {
     private var stage: some View {
         switch state.compareURL != nil ? WorkspaceTool.generate : state.tool {
         case .erase where state.focusedURL != nil:
-            EraseStage(model: state.erase)
+            MaskStage(model: state.erase)
+        case .fill where state.focusedURL != nil:
+            MaskStage(model: state.fill)
         case .outpaint where state.focusedURL != nil:
             OutpaintStage(model: state.outpaint)
         default:
@@ -194,6 +197,8 @@ struct WorkspaceView: View {
             PromptBarView()
         case .erase:
             if state.focusedURL != nil { EraseBar(model: state.erase) } else { NeedsImageBar() }
+        case .fill:
+            if state.focusedURL != nil { FillBar(model: state.fill) } else { NeedsImageBar() }
         case .outpaint:
             if state.focusedURL != nil { OutpaintBar(model: state.outpaint) } else { NeedsImageBar() }
         case .deblur:
@@ -230,6 +235,7 @@ struct WorkspaceView: View {
         switch state.tool {
         case .edit: preciseEdit.sync(with: url, parent: state.parent(of: url))
         case .erase: state.erase.sync(with: url)
+        case .fill: state.fill.sync(with: url)
         case .outpaint: state.outpaint.sync(with: url)
         case .deblur: state.deblur.sync(with: url)
         case .tryOn: state.tryOn.sync(with: url)

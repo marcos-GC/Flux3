@@ -14,38 +14,7 @@ struct EraseBar: View {
 
     var body: some View {
         ToolBarContainer {
-            HStack(spacing: 8) {
-                // «Marcar» pinta en violeta lo que se borrará; «Desmarcar» solo corrige esa pintura.
-                Picker("", selection: $model.isEraser) {
-                    Label("Marcar", systemImage: "paintbrush.pointed").tag(false)
-                    Label("Desmarcar", systemImage: "minus.circle").tag(true)
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(width: 200)
-                .help("Marcar: pinta en violeta lo que quieres borrar · Desmarcar: quita pintura violeta si te has pasado")
-
-                HStack(spacing: 6) {
-                    Image(systemName: "circle.fill").font(.system(size: 6))
-                    Slider(value: $model.brushRadius, in: 0.005...0.12)
-                        .frame(width: 110)
-                    Image(systemName: "circle.fill").font(.system(size: 13))
-                }
-                .foregroundStyle(Theme.textSecondary)
-                .help("Tamaño del pincel")
-
-                iconButton("arrow.uturn.backward", "Deshacer (⌘Z)", disabled: model.strokes.isEmpty) { model.undo() }
-                    .keyboardShortcut("z", modifiers: .command)
-                iconButton("arrow.uturn.forward", "Rehacer (⇧⌘Z)", disabled: model.redoStack.isEmpty) { model.redo() }
-                    .keyboardShortcut("z", modifiers: [.command, .shift])
-                Button { model.inverted.toggle() } label: {
-                    Chip(icon: "circle.lefthalf.filled", text: "Invertir", isActive: model.inverted)
-                }
-                .buttonStyle(.plain)
-                Button { model.clearMask() } label: { Chip(icon: "trash", text: "Limpiar") }
-                    .buttonStyle(.plain)
-                    .disabled(model.strokes.isEmpty && !model.inverted)
-            }
+            MaskBrushControls(model: model, paintHelp: "lo que quieres borrar")
 
             HStack(spacing: 8) {
                 HStack(spacing: 6) {
@@ -70,27 +39,11 @@ struct EraseBar: View {
             }
         }
     }
-
-    private func iconButton(_ icon: String, _ help: String, disabled: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: icon)
-                .font(.system(size: 13))
-                .frame(width: 30, height: 28)
-                .background(Capsule().fill(Color.white.opacity(0.7)))
-                .overlay(Capsule().strokeBorder(Theme.border))
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(Theme.textPrimary)
-        .disabled(disabled)
-        .opacity(disabled ? 0.4 : 1)
-        .help(help)
-    }
-
 }
 
-/// Imagen con la máscara en el escenario.
-struct EraseStage: View {
-    @ObservedObject var model: EraseModel
+/// Imagen con la máscara en el escenario (Borrar y Pintar y rellenar).
+struct MaskStage: View {
+    @ObservedObject var model: MaskToolModel
 
     var body: some View {
         if let input = model.input {
@@ -103,7 +56,7 @@ struct EraseStage: View {
 
 /// Imagen con la máscara pintada encima (semitransparente).
 private struct MaskCanvas: View {
-    @ObservedObject var model: EraseModel
+    @ObservedObject var model: MaskToolModel
     let input: ToolImage
     @State private var current: MaskStroke?
     @State private var hover: CGPoint?
@@ -127,7 +80,13 @@ private struct MaskCanvas: View {
                 .offset(x: frame.minX, y: frame.minY)
                 .allowsHitTesting(false)
 
-                if let hover {
+                if model.shape == .polygon {
+                    PolygonOverlay(points: model.pendingPolygon.map { denormalized($0, frame: frame) },
+                                   hover: hover, closeRadius: Self.closeRadius)
+                        .allowsHitTesting(false)
+                }
+
+                if let hover, model.shape == .brush {
                     let r = model.brushRadius * frame.width
                     Circle()
                         .strokeBorder(Color.white, lineWidth: 1.5)
@@ -141,7 +100,9 @@ private struct MaskCanvas: View {
                     .frame(width: frame.width, height: frame.height)
                     .contentShape(Rectangle())
                     .offset(x: frame.minX, y: frame.minY)
-                    .gesture(paintGesture(frame: frame))
+                    .gesture(model.shape == .polygon
+                             ? AnyGesture(polygonGesture(frame: frame))
+                             : AnyGesture(paintGesture(frame: frame)))
                     .onContinuousHover(coordinateSpace: .named("mask")) { phase in
                         switch phase {
                         case .active(let p): hover = p
@@ -151,6 +112,29 @@ private struct MaskCanvas: View {
             }
             .coordinateSpace(name: "mask")
         }
+    }
+
+    /// Distancia (en puntos de pantalla) a la que un clic sobre el primer vértice cierra el polígono.
+    static let closeRadius: CGFloat = 9
+
+    private func denormalized(_ p: CGPoint, frame: CGRect) -> CGPoint {
+        CGPoint(x: frame.minX + p.x * frame.width, y: frame.minY + p.y * frame.height)
+    }
+
+    /// Polígono: cada clic añade un vértice; un clic sobre el primero lo cierra.
+    private func polygonGesture(frame: CGRect) -> some Gesture {
+        DragGesture(minimumDistance: 0, coordinateSpace: .named("mask"))
+            .onEnded { value in
+                hover = value.location
+                if model.canClosePolygon, let first = model.pendingPolygon.first {
+                    let p = denormalized(first, frame: frame)
+                    if hypot(p.x - value.location.x, p.y - value.location.y) <= Self.closeRadius {
+                        model.closePolygon()
+                        return
+                    }
+                }
+                model.addPolygonPoint(normalized(value.location, frame: frame))
+            }
     }
 
     private func normalized(_ p: CGPoint, frame: CGRect) -> CGPoint {
@@ -185,12 +169,17 @@ private struct MaskCanvas: View {
             if model.inverted {
                 layer.fill(Path(CGRect(origin: .zero, size: size)), with: .color(color))
             }
-            for stroke in all where !stroke.points.isEmpty {
+            for stroke in all where stroke.hasArea {
                 let paints = stroke.erases == model.inverted
                 layer.blendMode = paints ? .normal : .clear
                 let r = stroke.radius * size.width
                 let pts = stroke.points.map { CGPoint(x: $0.x * size.width, y: $0.y * size.height) }
-                if pts.count == 1 {
+                if stroke.isPolygon {
+                    var path = Path()
+                    path.addLines(pts)
+                    path.closeSubpath()
+                    layer.fill(path, with: .color(color))
+                } else if pts.count == 1 {
                     layer.fill(Path(ellipseIn: CGRect(x: pts[0].x - r, y: pts[0].y - r, width: r * 2, height: r * 2)),
                                with: .color(color))
                 } else {
@@ -199,6 +188,117 @@ private struct MaskCanvas: View {
                     layer.stroke(path, with: .color(color),
                                  style: StrokeStyle(lineWidth: r * 2, lineCap: .round, lineJoin: .round))
                 }
+            }
+        }
+    }
+}
+
+/// Controles del pincel: marcar o desmarcar, tamaño, deshacer, rehacer, invertir y limpiar.
+struct MaskBrushControls: View {
+    @ObservedObject var model: MaskToolModel
+    /// Qué se marca, para las ayudas («lo que quieres borrar», «la zona que quieres cambiar»…).
+    let paintHelp: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Picker("", selection: $model.shape) {
+                Image(systemName: "paintbrush").tag(MaskToolModel.Shape.brush)
+                Image(systemName: "pentagon").tag(MaskToolModel.Shape.polygon)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(width: 76)
+            .help("Pincel: pinta a mano alzada · Polígono: clic a clic con líneas rectas para formas exactas (una mesa, una pared…); clic en el primer punto para cerrar")
+
+            // «Marcar» pinta en violeta; «Desmarcar» solo corrige esa pintura.
+            Picker("", selection: $model.isEraser) {
+                Label("Marcar", systemImage: "paintbrush.pointed").tag(false)
+                Label("Desmarcar", systemImage: "minus.circle").tag(true)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(width: 200)
+            .help("Marcar: pinta en violeta \(paintHelp) · Desmarcar: quita pintura violeta si te has pasado")
+
+            if model.shape == .brush {
+                HStack(spacing: 6) {
+                    Image(systemName: "circle.fill").font(.system(size: 6))
+                    Slider(value: $model.brushRadius, in: 0.005...0.12)
+                        .frame(width: 110)
+                    Image(systemName: "circle.fill").font(.system(size: 13))
+                }
+                .foregroundStyle(Theme.textSecondary)
+                .help("Tamaño del pincel")
+            } else if model.pendingPolygon.isEmpty {
+                Text("Haz clic en cada esquina")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.textSecondary)
+            } else {
+                Button { model.closePolygon() } label: { Chip(icon: "checkmark", text: "Cerrar forma") }
+                    .buttonStyle(.plain)
+                    .disabled(!model.canClosePolygon)
+                    .help("Cierra el polígono (también: clic en el primer punto)")
+                Button { model.cancelPolygon() } label: { Chip(icon: "xmark", text: "Cancelar") }
+                    .buttonStyle(.plain)
+                    .keyboardShortcut(.cancelAction)
+                    .help("Descarta la forma a medias (Esc)")
+            }
+
+            iconButton("arrow.uturn.backward", "Deshacer (⌘Z)", disabled: model.strokes.isEmpty && model.pendingPolygon.isEmpty) { model.undo() }
+                .keyboardShortcut("z", modifiers: .command)
+            iconButton("arrow.uturn.forward", "Rehacer (⇧⌘Z)", disabled: model.redoStack.isEmpty) { model.redo() }
+                .keyboardShortcut("z", modifiers: [.command, .shift])
+            Button { model.inverted.toggle() } label: {
+                Chip(icon: "circle.lefthalf.filled", text: "Invertir", isActive: model.inverted)
+            }
+            .buttonStyle(.plain)
+            Button { model.clearMask() } label: { Chip(icon: "trash", text: "Limpiar") }
+                .buttonStyle(.plain)
+                .disabled(model.strokes.isEmpty && !model.inverted)
+        }
+    }
+
+    private func iconButton(_ icon: String, _ help: String, disabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 13))
+                .frame(width: 30, height: 28)
+                .background(Capsule().fill(Color.white.opacity(0.7)))
+                .overlay(Capsule().strokeBorder(Theme.border))
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(Theme.textPrimary)
+        .disabled(disabled)
+        .opacity(disabled ? 0.4 : 1)
+        .help(help)
+    }
+}
+
+/// Polígono a medias: líneas entre vértices, línea hasta el ratón y el primer punto destacado.
+private struct PolygonOverlay: View {
+    let points: [CGPoint]
+    let hover: CGPoint?
+    let closeRadius: CGFloat
+
+    var body: some View {
+        Canvas { ctx, _ in
+            guard let first = points.first else { return }
+            var path = Path()
+            path.addLines(points)
+            if let hover { path.addLine(to: hover) }
+            ctx.stroke(path, with: .color(.black.opacity(0.45)), style: StrokeStyle(lineWidth: 3, lineJoin: .round))
+            ctx.stroke(path, with: .color(.white), style: StrokeStyle(lineWidth: 1.5, lineJoin: .round))
+            for (i, p) in points.enumerated() {
+                let r: CGFloat = i == 0 ? closeRadius * 0.7 : 3.5
+                let dot = Path(ellipseIn: CGRect(x: p.x - r, y: p.y - r, width: r * 2, height: r * 2))
+                ctx.fill(dot, with: .color(i == 0 ? Theme.region : .white))
+                ctx.stroke(dot, with: .color(.black.opacity(0.5)), lineWidth: 1)
+            }
+            // Si el ratón está sobre el primer punto, se indica que el clic cierra la forma.
+            if points.count >= 3, let hover, hypot(hover.x - first.x, hover.y - first.y) <= closeRadius {
+                let ring = Path(ellipseIn: CGRect(x: first.x - closeRadius, y: first.y - closeRadius,
+                                                  width: closeRadius * 2, height: closeRadius * 2))
+                ctx.stroke(ring, with: .color(.white), lineWidth: 2)
             }
         }
     }

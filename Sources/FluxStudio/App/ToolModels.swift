@@ -70,6 +70,8 @@ final class ToolRunner: ObservableObject {
     func run<Body: Encodable & Sendable>(
         state: AppState, endpoint: BFLEndpoint, modelName: String, prompt: String,
         referenceCount: Int = 0, source: URL? = nil,
+        sentPrompt: String? = nil, prefix: String? = nil,
+        transform: AppState.JobTransform? = nil,
         onDone: (@MainActor (URL) -> Void)? = nil,
         prepare: @escaping @MainActor () async throws -> Body
     ) {
@@ -96,8 +98,8 @@ final class ToolRunner: ObservableObject {
                 self?.status = "Enviando"
                 let output = try await state.runJob(
                     client: client, endpoint: endpoint, body: body, modelName: modelName,
-                    prefix: endpoint.filePrefix, index: 0, prompt: prompt, sentPrompt: prompt,
-                    parameters: parameters, referenceCount: referenceCount, source: source
+                    prefix: prefix ?? endpoint.filePrefix, index: 0, prompt: prompt, sentPrompt: sentPrompt ?? prompt,
+                    parameters: parameters, referenceCount: referenceCount, source: source, transform: transform
                 ) { [weak self] phase, _, _ in
                     self?.status = PreciseEditModel.describe(phase)
                 }
@@ -260,21 +262,25 @@ final class OutpaintModel: BaseToolModel {
     }
 }
 
-// MARK: - Borrar
+// MARK: - Máscara pintada (Borrar y Pintar y rellenar)
 
+/// Base de las herramientas en las que se pinta una máscara con pincel.
 @MainActor
-final class EraseModel: BaseToolModel {
+class MaskToolModel: BaseToolModel {
     @Published var strokes: [MaskStroke] = []
     @Published var redoStack: [MaskStroke] = []
     @Published var inverted = false
     @Published var isEraser = false
     /// Radio del pincel como fracción del ancho de la imagen.
     @Published var brushRadius = 0.03
-    @Published var dilatePixels = 10.0
 
-    init(settings: SettingsStore) {
-        super.init(endpoint: .erase, settings: settings)
+    /// Cómo se marca: con pincel o con un polígono de líneas rectas (formas exactas: una mesa, una pared…).
+    enum Shape: Hashable { case brush, polygon }
+    @Published var shape: Shape = .brush {
+        didSet { if shape != .polygon { pendingPolygon = [] } }
     }
+    /// Vértices del polígono que se está dibujando (normalizados 0–1). Se cierra al pulsar el primero.
+    @Published var pendingPolygon: [CGPoint] = []
 
     override func didLoadInput() {
         clearMask()
@@ -285,7 +291,31 @@ final class EraseModel: BaseToolModel {
         redoStack.removeAll()
     }
 
+    func addPolygonPoint(_ point: CGPoint) {
+        pendingPolygon.append(point)
+    }
+
+    var canClosePolygon: Bool { pendingPolygon.count >= 3 }
+
+    /// Cierra el polígono en curso y lo añade a la máscara (marca o desmarca, según el modo).
+    func closePolygon() {
+        guard canClosePolygon else { return }
+        // Sin nada marcado no hay nada que desmarcar: se marca directamente.
+        if isEraser && maskIsEmpty { isEraser = false }
+        add(MaskStroke(points: pendingPolygon, radius: 0, erases: isEraser, isPolygon: true))
+        pendingPolygon = []
+    }
+
+    func cancelPolygon() {
+        pendingPolygon = []
+    }
+
+    /// ⌘Z: si hay un polígono a medias, quita su último vértice; si no, el último trazo.
     func undo() {
+        if !pendingPolygon.isEmpty {
+            pendingPolygon.removeLast()
+            return
+        }
         guard let last = strokes.popLast() else { return }
         redoStack.append(last)
     }
@@ -298,6 +328,7 @@ final class EraseModel: BaseToolModel {
     func clearMask() {
         strokes = []
         redoStack = []
+        pendingPolygon = []
         inverted = false
         isEraser = false
     }
@@ -306,6 +337,17 @@ final class EraseModel: BaseToolModel {
 
     struct MaskError: LocalizedError {
         var errorDescription: String? { "No se ha podido crear la máscara." }
+    }
+}
+
+// MARK: - Borrar
+
+@MainActor
+final class EraseModel: MaskToolModel {
+    @Published var dilatePixels = 10.0
+
+    init(settings: SettingsStore) {
+        super.init(endpoint: .erase, settings: settings)
     }
 
     func generate(state: AppState) {
@@ -318,11 +360,98 @@ final class EraseModel: BaseToolModel {
             guard let mask = MaskRenderer.pngData(
                 strokes: strokes, inverted: inverted,
                 width: encoded.pixelWidth, height: encoded.pixelHeight
-            ) else { throw MaskError() }
+            ) else { throw MaskToolModel.MaskError() }
             return EraseRequest(
                 image: encoded.base64, mask: mask.base64EncodedString(),
                 dilatePixels: dilate, seed: seed, safetyTolerance: safety, outputFormat: format
             )
+        }
+    }
+}
+
+// MARK: - Pintar y rellenar
+
+/// Inpainting con máscara: se pinta una zona, se describe qué poner y FLUX 3 Image edita la foto;
+/// después solo se pega lo que hay dentro de la zona pintada (con el borde suavizado).
+@MainActor
+final class FillModel: MaskToolModel {
+    @Published var prompt = ""
+    @Published var resolution = "1k"
+    /// Pegar el resultado solo en la zona pintada. Si se desactiva, se guarda la imagen tal cual la devuelve FLUX.
+    @Published var pasteOnlyMask = true
+    /// Píxeles que se agranda la zona pintada al pegar.
+    @Published var grow = Double(MaskFill.defaultGrow)
+    /// Anchura del borde suavizado al pegar.
+    @Published var feather = Double(MaskFill.defaultFeather)
+    /// Imagen opcional con lo que se quiere poner (p. ej. un sofá concreto).
+    @Published var reference: ToolImage?
+    @Published var referenceLoading = false
+
+    init(settings: SettingsStore) {
+        super.init(endpoint: .flux3Image, settings: settings)
+    }
+
+    override func didLoadInput() {
+        super.didLoadInput()
+        if let input { resolution = PreciseEditModel.suggestedResolution(for: input.size) }
+    }
+
+    override func reset() {
+        super.reset()
+        reference = nil
+    }
+
+    func loadReference(_ url: URL) {
+        referenceLoading = true
+        Task {
+            do {
+                reference = try await ToolImage.load(url)
+            } catch {
+                loadError = "«\(url.lastPathComponent)»: \(error.localizedDescription)"
+            }
+            referenceLoading = false
+        }
+    }
+
+    var canGenerate: Bool {
+        input != nil && !maskIsEmpty && !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// Prompt exacto que se envía (o nil si aún no hay zona pintada).
+    var sentPrompt: String? {
+        guard let input,
+              let box = MaskFill.paintedBox(strokes: strokes, inverted: inverted,
+                                            imageWidth: input.size.width, imageHeight: input.size.height)
+        else { return nil }
+        return MaskFill.prompt(instruction: prompt, box: box, imageWidth: input.size.width,
+                               imageHeight: input.size.height, hasReference: reference != nil)
+    }
+
+    func generate(state: AppState) {
+        guard canGenerate, let input, let sent = sentPrompt else { return }
+        let reference = reference
+        let instruction = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        let strokes = strokes, inverted = inverted
+        let resolution = resolution, safety = safety, format = format
+        let grow = Int(grow), feather = Int(feather)
+        let originalURL = input.url
+        let transform: AppState.JobTransform? = pasteOnlyMask ? { generated in
+            try await Task.detached(priority: .userInitiated) {
+                let original = try Data(contentsOf: originalURL)
+                return try MaskFill.compositeFile(
+                    originalData: original, generatedData: generated, strokes: strokes, inverted: inverted,
+                    grow: grow, feather: feather, format: format
+                )
+            }.value
+        } : nil
+        runner.run(state: state, endpoint: .flux3Image, modelName: "Pintar y rellenar", prompt: instruction,
+                   referenceCount: reference == nil ? 0 : 1, source: originalURL,
+                   sentPrompt: sent, prefix: "fill", transform: transform) {
+            let photo = try await input.encoded()
+            var images = [photo.base64]
+            if let reference { images.append(try await reference.encoded().base64) }
+            return Flux3ImageRequest(prompt: sent, images: images, aspectRatio: "auto",
+                                     resolution: resolution, safetyTolerance: safety)
         }
     }
 }

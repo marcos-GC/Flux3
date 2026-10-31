@@ -2,7 +2,7 @@ import Foundation
 
 /// Modos de la barra lateral.
 enum AppMode: String, CaseIterable, Identifiable {
-    case generate, preciseEdit, outpaint, erase, tryOn, deblur, video, history, library, settings
+    case generate, preciseEdit, fill, outpaint, erase, tryOn, deblur, video, history, library, settings
 
     var id: String { rawValue }
 
@@ -12,6 +12,7 @@ enum AppMode: String, CaseIterable, Identifiable {
         switch self {
         case .generate: return "Estudio"
         case .preciseEdit: return "Editar"
+        case .fill: return "Pintar y rellenar"
         case .outpaint: return "Ampliar"
         case .erase: return "Borrar"
         case .tryOn: return "Probador"
@@ -27,6 +28,7 @@ enum AppMode: String, CaseIterable, Identifiable {
         switch self {
         case .generate: return "sparkles"
         case .preciseEdit: return "selection.pin.in.out"
+        case .fill: return "paintbrush"
         case .outpaint: return "arrow.up.left.and.arrow.down.right"
         case .erase: return "eraser"
         case .tryOn: return "tshirt"

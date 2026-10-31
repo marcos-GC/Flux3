@@ -3,18 +3,26 @@ import Foundation
 import ImageIO
 import UniformTypeIdentifiers
 
-/// Trazo de pincel para la máscara de Borrar. Coordenadas normalizadas (0–1) sobre la imagen.
+/// Trazo de la máscara (Borrar y Pintar y rellenar). Coordenadas normalizadas (0–1) sobre la imagen.
 public struct MaskStroke: Equatable, Sendable {
     public var points: [CGPoint]
-    /// Radio del pincel como fracción del ancho de la imagen.
+    /// Radio del pincel como fracción del ancho de la imagen (no se usa en polígonos).
     public var radius: Double
     /// true = goma (quita máscara).
     public var erases: Bool
+    /// true = polígono cerrado de líneas rectas: `points` son sus vértices y se rellena el interior.
+    public var isPolygon: Bool
 
-    public init(points: [CGPoint], radius: Double, erases: Bool) {
+    public init(points: [CGPoint], radius: Double, erases: Bool, isPolygon: Bool = false) {
         self.points = points
         self.radius = radius
         self.erases = erases
+        self.isPolygon = isPolygon
+    }
+
+    /// Si el trazo marca algo (un polígono necesita al menos 3 vértices).
+    public var hasArea: Bool {
+        isPolygon ? points.count >= 3 : !points.isEmpty
     }
 }
 
@@ -23,7 +31,7 @@ public struct MaskStroke: Equatable, Sendable {
 public enum MaskRenderer {
     /// Si la máscara no tiene nada que borrar.
     public static func isEmpty(strokes: [MaskStroke], inverted: Bool) -> Bool {
-        !inverted && !strokes.contains { !$0.erases && !$0.points.isEmpty }
+        !inverted && !strokes.contains { !$0.erases && $0.hasArea }
     }
 
     /// Píxeles en escala de grises (0 o 255), fila a fila desde arriba. `width * height` bytes.
@@ -67,7 +75,7 @@ public enum MaskRenderer {
         ctx.setFillColor(gray: background, alpha: 1)
         ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
 
-        for stroke in strokes where !stroke.points.isEmpty {
+        for stroke in strokes where stroke.hasArea {
             // Pincel = blanco (borrar); goma = negro. Invertir intercambia los dos.
             let paintsWhite = stroke.erases == inverted
             let value: CGFloat = paintsWhite ? 1 : 0
@@ -75,7 +83,11 @@ public enum MaskRenderer {
             ctx.setFillColor(gray: value, alpha: 1)
             let r = CGFloat(stroke.radius) * CGFloat(width)
             let pts = stroke.points.map { CGPoint(x: $0.x * CGFloat(width), y: $0.y * CGFloat(height)) }
-            if pts.count == 1 {
+            if stroke.isPolygon {
+                ctx.addLines(between: pts)
+                ctx.closePath()
+                ctx.fillPath()
+            } else if pts.count == 1 {
                 ctx.fillEllipse(in: CGRect(x: pts[0].x - r, y: pts[0].y - r, width: r * 2, height: r * 2))
             } else {
                 ctx.setLineWidth(r * 2)

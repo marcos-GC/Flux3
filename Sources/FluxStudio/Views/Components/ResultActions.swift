@@ -73,7 +73,7 @@ struct SendToButtons: View {
 
     @ViewBuilder
     private var imageTools: some View {
-        ForEach([AppMode.preciseEdit, .erase, .outpaint, .deblur, .tryOn], id: \.self) { mode in
+        ForEach([AppMode.preciseEdit, .fill, .erase, .outpaint, .deblur, .tryOn], id: \.self) { mode in
             Button(mode == .tryOn ? "\(mode.title) (como persona)" : mode.title) {
                 onSend()
                 state.send(fileURL, to: mode)
