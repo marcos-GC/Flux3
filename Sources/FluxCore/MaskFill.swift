@@ -173,24 +173,27 @@ public enum MaskFill {
         let rowBytes = base.bytesPerRow, topRowBytes = top.bytesPerRow
         let b = baseData.bindMemory(to: UInt8.self, capacity: rowBytes * height)
         let t = topData.bindMemory(to: UInt8.self, capacity: topRowBytes * height)
-        alpha.withUnsafeBufferPointer { a in
-            // Las filas del contexto van de arriba abajo, igual que la máscara.
-            for y in 0..<height {
-                for x in 0..<width {
-                    let k = Int(a[y * width + x])
-                    guard k > 0 else { continue }
-                    let bi = y * rowBytes + x * 4, ti = y * topRowBytes + x * 4
-                    if k == 255 {
-                        b[bi] = t[ti]; b[bi + 1] = t[ti + 1]; b[bi + 2] = t[ti + 2]; b[bi + 3] = t[ti + 3]
-                    } else {
-                        for c in 0..<4 {
-                            b[bi + c] = UInt8((Int(t[ti + c]) * k + Int(b[bi + c]) * (255 - k) + 127) / 255)
-                        }
-                    }
+        // Las filas del contexto van de arriba abajo, igual que la máscara.
+        for y in 0..<height {
+            for x in 0..<width {
+                let k: Int = Int(alpha[y * width + x])
+                if k == 0 { continue }
+                let bi: Int = y * rowBytes + x * 4
+                let ti: Int = y * topRowBytes + x * 4
+                for c in 0..<4 {
+                    b[bi + c] = blend(top: t[ti + c], base: b[bi + c], alpha: k)
                 }
             }
         }
         return base.makeImage()
+    }
+
+    /// Mezcla de un canal: `top` con opacidad `alpha` (0–255) sobre `base`.
+    @inline(__always)
+    static func blend(top: UInt8, base: UInt8, alpha: Int) -> UInt8 {
+        let topPart: Int = Int(top) * alpha
+        let basePart: Int = Int(base) * (255 - alpha)
+        return UInt8((topPart + basePart + 127) / 255)
     }
 
     private static func rgbaContext(width: Int, height: Int) -> CGContext? {
