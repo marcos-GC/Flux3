@@ -10,6 +10,7 @@ struct HistoryView: View {
     @State private var search = ""
     @State private var model = HistoryView.allModels
     @State private var selected: StoredResult?
+    @State private var onlyFavorites = false
 
     static let allModels = "Todos los modos"
 
@@ -17,6 +18,7 @@ struct HistoryView: View {
         let query = search.trimmingCharacters(in: .whitespaces).lowercased()
         return history.items.filter { item in
             (model == Self.allModels || ToolNames.display(item.record.model) == model)
+                && (!onlyFavorites || item.record.isFavorite)
                 && (query.isEmpty
                     || item.record.prompt.lowercased().contains(query)
                     || (item.record.expandedPrompt?.lowercased().contains(query) ?? false))
@@ -88,6 +90,12 @@ struct HistoryView: View {
                 label: { $0 }
             )
 
+            Button { onlyFavorites.toggle() } label: {
+                Chip(icon: onlyFavorites ? "heart.fill" : "heart", text: "Favoritas", isActive: onlyFavorites)
+            }
+            .buttonStyle(.plain)
+            .help("Ver solo las imágenes marcadas con el corazón")
+
             Button { history.reload(force: true) } label: {
                 Chip(icon: "arrow.clockwise", text: "Actualizar")
             }
@@ -140,6 +148,10 @@ private struct HistoryCell: View {
                             .background(Circle().fill(Color.black.opacity(0.6)))
                             .padding(8)
                     }
+                }
+                .overlay(alignment: .topTrailing) {
+                    FavoriteButton(fileURL: item.fileURL, visibleWhenOff: hovering, size: 13)
+                        .padding(8)
                 }
                 .onDrag { fileDragProvider(item.fileURL) }
 

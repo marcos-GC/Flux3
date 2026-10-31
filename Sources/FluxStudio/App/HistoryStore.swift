@@ -46,6 +46,22 @@ final class HistoryStore: ObservableObject {
         items.filter { sessionURLs.contains($0.fileURL) }
     }
 
+    func isFavorite(_ url: URL) -> Bool {
+        items.first { $0.fileURL == url }?.record.isFavorite ?? false
+    }
+
+    /// Marca o desmarca el corazón y lo guarda en el .json del resultado.
+    func toggleFavorite(_ url: URL) {
+        guard let index = items.firstIndex(where: { $0.fileURL == url }) else { return }
+        var result = items[index]
+        result.record.favorite = result.record.isFavorite ? nil : true
+        items[index] = result
+        let record = result.record, metadataURL = result.metadataURL
+        Task.detached(priority: .utility) {
+            try? ResultStore.updateRecord(record, metadataURL: metadataURL)
+        }
+    }
+
     /// Mueve el archivo y su .json a la Papelera.
     func moveToTrash(_ result: StoredResult) {
         NSWorkspace.shared.recycle([result.fileURL, result.metadataURL]) { _, _ in }

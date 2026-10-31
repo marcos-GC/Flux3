@@ -24,6 +24,8 @@ enum Theme {
     static let region = Color(hex: 0x8B7CF6)
     static let placeholder = Color(hex: 0xE2E2E2)
     static let danger = Color(hex: 0xC2410C)
+    /// Corazón de las favoritas.
+    static let favorite = Color(hex: 0xF5B800)
 
     /// Un color por región, como en la herramienta oficial (1 violeta, 2 azul…).
     static let regionPalette: [Color] = [

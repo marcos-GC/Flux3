@@ -18,6 +18,10 @@ public struct GenerationRecord: Codable, Sendable, Equatable {
     public var referenceCount: Int?
     /// Cachés de borrador de vídeo (para «Renderizar a calidad final»). Caducan en ~1 hora.
     public var draftCaches: [String]?
+    /// Marcada con el corazón (favorita). Opcional para leer los .json antiguos.
+    public var favorite: Bool?
+
+    public var isFavorite: Bool { favorite == true }
 
     public init(
         taskID: String, endpoint: String, model: String, createdAt: Date = Date(),
@@ -45,7 +49,7 @@ public struct GenerationRecord: Codable, Sendable, Equatable {
 
 /// Un resultado guardado en disco (archivo + su .json).
 public struct StoredResult: Identifiable, Sendable, Equatable {
-    public let record: GenerationRecord
+    public var record: GenerationRecord
     public let fileURL: URL
     public let metadataURL: URL
     public var id: String { metadataURL.path }
@@ -96,6 +100,11 @@ public enum ResultStore {
         let metaURL = folder.appendingPathComponent(name).appendingPathExtension("json")
         try encoder.encode(meta).write(to: metaURL, options: .atomic)
         return StoredResult(record: meta, fileURL: fileURL, metadataURL: metaURL)
+    }
+
+    /// Vuelve a escribir el .json de un resultado (p. ej. al marcarlo como favorito).
+    public static func updateRecord(_ record: GenerationRecord, metadataURL: URL) throws {
+        try encoder.encode(record).write(to: metadataURL, options: .atomic)
     }
 
     /// Lee todos los resultados guardados (más recientes primero).

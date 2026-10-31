@@ -86,6 +86,7 @@ private struct StripThumb: View {
     let selected: Bool
     var isNew = false
     @State private var thumbnail: NSImage?
+    @State private var hovering = false
 
     var body: some View {
         ZStack {
@@ -116,6 +117,19 @@ private struct StripThumb: View {
                     .help("Resultado nuevo que aún no has abierto")
             }
         }
+        .overlay(alignment: .bottomTrailing) {
+            FavoriteButton(fileURL: item.fileURL, visibleWhenOff: hovering)
+                .padding(4)
+        }
+        .overlay {
+            if item.record.isFavorite {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(Theme.favorite, lineWidth: 2)
+                    .padding(selected ? 2.5 : 0)
+                    .allowsHitTesting(false)
+            }
+        }
+        .onHover { hovering = $0 }
         .frame(maxWidth: .infinity)
         .aspectRatio(thumbnail.map { $0.size.width / max($0.size.height, 1) } ?? 1, contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))

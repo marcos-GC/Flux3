@@ -39,6 +39,16 @@ final class ResultStoreTests: XCTestCase {
         XCTAssertEqual(loaded.last?.fileURL.lastPathComponent, a.fileURL.lastPathComponent)
     }
 
+    func testFavoriteIsSavedAndOldFilesAreNotFavorite() throws {
+        var saved = try ResultStore.save(data: Data([1]), mimeType: "image/jpeg", sourceURL: nil,
+                                         base: base, prefix: "x", index: 0, record: record("dddddddd4", prompt: "p", date: Date()))
+        XCTAssertFalse(ResultStore.loadAll(base: base).first?.record.isFavorite ?? true)
+
+        saved.record.favorite = true
+        try ResultStore.updateRecord(saved.record, metadataURL: saved.metadataURL)
+        XCTAssertTrue(ResultStore.loadAll(base: base).first?.record.isFavorite ?? false)
+    }
+
     func testIgnoresOrphansAndForeignJSON() throws {
         let saved = try ResultStore.save(data: Data([1]), mimeType: "image/jpeg", sourceURL: nil,
                                          base: base, prefix: "x", index: 0, record: record("cccccccc3", prompt: "p", date: Date()))
