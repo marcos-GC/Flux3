@@ -27,6 +27,27 @@ final class PromptEnhancerTests: XCTestCase {
         XCTAssertTrue(content.contains("un salón luminoso"))
     }
 
+    func testEditRegionPrompt() throws {
+        let data = try PromptEnhancer.requestBody(
+            userPrompt: "una lámpara de pie",
+            context: .init(kind: .edit, editField: .regionNew, regionHasReference: true)
+        )
+        let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let system = try XCTUnwrap((json["system"] as? [[String: Any]])?.first?["text"] as? String)
+        XCTAssertTrue(system.contains("Editar con precisión"))
+        XCTAssertTrue(system.contains("<prompt>"), "Debe incluir el formato de respuesta")
+        let content = try XCTUnwrap((json["messages"] as? [[String: Any]])?.first?["content"] as? String)
+        XCTAssertTrue(content.contains("Región «Nuevo»"))
+        XCTAssertTrue(content.contains("<referencia_region>"))
+        XCTAssertTrue(content.contains("una lámpara de pie"))
+    }
+
+    func testEditGlobalPromptDefaultsToGlobalField() throws {
+        let content = PromptEnhancer.userMessage(userPrompt: "que sea de noche", context: .init(kind: .edit))
+        XCTAssertTrue(content.contains("Cambio en toda la imagen"))
+        XCTAssertFalse(content.contains("<referencia_region>"))
+    }
+
     func testVideoSystemPrompt() throws {
         let data = try PromptEnhancer.requestBody(
             userPrompt: "recorrido por la cocina", context: .init(kind: .video, videoMode: "Imagen a vídeo", keyframeCount: 1)

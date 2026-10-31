@@ -70,6 +70,9 @@ final class PreciseEditModel: ObservableObject {
     /// Estado de interacción que no necesita redibujar la vista.
     var spaceHeld = false
     var pointerInCanvas = false
+    /// Mientras se arrastra o redimensiona una caja, la tarjeta de la región se oculta
+    /// para que no vaya dando saltos detrás del puntero.
+    @Published var isDraggingBox = false
 
     private var generationTask: Task<Void, Never>?
 

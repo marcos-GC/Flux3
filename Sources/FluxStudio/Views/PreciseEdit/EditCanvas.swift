@@ -49,9 +49,10 @@ struct EditCanvas: View {
                                 .offset(x: rect.minX, y: rect.minY)
                                 .allowsHitTesting(false)
                         }
-                        if model.showRegions, let id = model.selectedRegionID,
+                        if model.showRegions, !model.isDraggingBox, let id = model.selectedRegionID,
                            let region = model.regions.first(where: { $0.id == id }) {
                             RegionInspector(region: region)
+                                .id(region.id) // estado propio por región (p. ej. deshacer «Mejorar»)
                                 .frame(width: 300)
                                 .offset(inspectorOffset(for: region, layout: layout, container: geo.size))
                         }
@@ -85,7 +86,8 @@ struct EditCanvas: View {
                 caption: region.kind == .new ? "Nuevo: \(region.displayText)" : region.displayText,
                 style: region.kind == .anchor ? .anchor : .primary,
                 color: Theme.regionColor(index, kind: region.kind),
-                selected: selected
+                selected: selected,
+                onDragging: { model.isDraggingBox = $0 }
             ) { model.selectedRegionID = region.id }
 
             if region.kind == .move, region.target != nil {
@@ -96,7 +98,8 @@ struct EditCanvas: View {
                     caption: "Destino",
                     style: .target,
                     color: Theme.regionColor(index),
-                    selected: selected
+                    selected: selected,
+                    onDragging: { model.isDraggingBox = $0 }
                 ) { model.selectedRegionID = region.id }
             }
         }
@@ -257,9 +260,21 @@ struct BoxEditor: View {
     let style: Style
     var color: Color = Theme.region
     let selected: Bool
+    var onDragging: (Bool) -> Void = { _ in }
     let onSelect: () -> Void
 
+    /// Caja al empezar el gesto.
     @State private var startRect: CGRect?
+    /// Caja mientras se arrastra: se pinta en local y solo se guarda en el modelo al soltar,
+    /// así no se redibuja todo el editor en cada movimiento del ratón.
+    @State private var liveRect: CGRect?
+    /// Vuelve a false sola si el sistema cancela el gesto sin llamar a `onEnded`.
+    @GestureState private var gestureActive = false
+
+    /// Los gestos se miden en el espacio del lienzo, que no se mueve. Si se midieran en el
+    /// espacio de la propia caja (que se desplaza con el arrastre), el desplazamiento se
+    /// realimenta y la caja avanza a saltos.
+    private static let space = CoordinateSpace.named("canvas")
 
     private var tint: Color {
         switch style {
@@ -270,7 +285,7 @@ struct BoxEditor: View {
     }
 
     var body: some View {
-        let vr = layout.viewRect(rect)
+        let vr = layout.viewRect(liveRect ?? rect)
         ZStack(alignment: .topLeading) {
             Rectangle()
                 .fill(tint.opacity(selected ? 0.16 : (style == .target ? 0.04 : 0.08)))
@@ -320,25 +335,48 @@ struct BoxEditor: View {
                 }
             }
         }
+        .onChange(of: gestureActive) { _, active in
+            if !active && startRect != nil { finish() }
+        }
+        .onDisappear {
+            if startRect != nil { onDragging(false) }
+        }
+    }
+
+    private func beginIfNeeded(select: Bool) {
+        guard startRect == nil else { return }
+        startRect = rect
+        liveRect = rect
+        if select && !selected { onSelect() }
+        onDragging(true)
+    }
+
+    private func finish() {
+        if let liveRect, liveRect != rect { rect = liveRect }
+        startRect = nil
+        liveRect = nil
+        onDragging(false)
     }
 
     private var moveGesture: some Gesture {
-        DragGesture(minimumDistance: 2)
+        DragGesture(minimumDistance: 2, coordinateSpace: Self.space)
+            .updating($gestureActive) { _, active, _ in active = true }
             .onChanged { value in
-                if startRect == nil { startRect = rect; onSelect() }
+                beginIfNeeded(select: true)
                 guard let start = startRect else { return }
                 var r = start
                 r.origin.x += value.translation.width / layout.imageFrame.width
                 r.origin.y += value.translation.height / layout.imageFrame.height
-                rect = r.clampedToUnit
+                liveRect = r.clampedToUnit
             }
-            .onEnded { _ in startRect = nil }
+            .onEnded { _ in finish() }
     }
 
     private func resizeGesture(_ corner: Corner) -> some Gesture {
-        DragGesture(minimumDistance: 1)
+        DragGesture(minimumDistance: 1, coordinateSpace: Self.space)
+            .updating($gestureActive) { _, active, _ in active = true }
             .onChanged { value in
-                if startRect == nil { startRect = rect }
+                beginIfNeeded(select: false)
                 guard let start = startRect else { return }
                 let dx = value.translation.width / layout.imageFrame.width
                 let dy = value.translation.height / layout.imageFrame.height
@@ -354,9 +392,9 @@ struct BoxEditor: View {
                 minY = max(0, min(minY, maxY - minSize))
                 maxX = min(1, max(maxX, minX + minSize))
                 maxY = min(1, max(maxY, minY + minSize))
-                rect = CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+                liveRect = CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
             }
-            .onEnded { _ in startRect = nil }
+            .onEnded { _ in finish() }
     }
 
     enum Corner: CaseIterable {

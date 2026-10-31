@@ -9,6 +9,20 @@ public enum PromptEnhancer {
 
     public enum Kind: String, Sendable {
         case image, video
+        /// Instrucción de «Editar con precisión» (una región o el cambio global).
+        case edit
+    }
+
+    /// Qué campo de «Editar con precisión» se está mejorando.
+    public enum EditField: String, Sendable, Equatable {
+        /// «Cambio en toda la imagen».
+        case global
+        /// Región «Editar»: qué cambia dentro de la caja.
+        case regionEdit
+        /// Región «Nuevo»: qué aparece en la caja.
+        case regionNew
+        /// Región «Mover»: detalle opcional del movimiento.
+        case regionMove
     }
 
     /// Lo que la app sabe de la petición y ayuda a mejorar el prompt.
@@ -19,14 +33,21 @@ public enum PromptEnhancer {
         /// Para vídeo: «texto a vídeo», «imagen a vídeo»…
         public var videoMode: String?
         public var keyframeCount: Int
+        /// Para edición: qué campo se mejora.
+        public var editField: EditField?
+        /// Para edición de una región: si la región tiene su propia imagen de referencia.
+        public var regionHasReference: Bool
 
         public init(kind: Kind, referenceCount: Int = 0, aspectRatio: String? = nil,
-                    videoMode: String? = nil, keyframeCount: Int = 0) {
+                    videoMode: String? = nil, keyframeCount: Int = 0,
+                    editField: EditField? = nil, regionHasReference: Bool = false) {
             self.kind = kind
             self.referenceCount = referenceCount
             self.aspectRatio = aspectRatio
             self.videoMode = videoMode
             self.keyframeCount = keyframeCount
+            self.editField = editField
+            self.regionHasReference = regionHasReference
         }
     }
 
@@ -117,6 +138,21 @@ public enum PromptEnhancer {
             if let ar = context.aspectRatio, ar != "auto" {
                 lines.append("<proporcion>\(ar)</proporcion>")
             }
+        case .edit:
+            lines.append("<tipo>FLUX 3 Image · Editar con precisión</tipo>")
+            switch context.editField ?? .global {
+            case .global:
+                lines.append("<campo>Cambio en toda la imagen</campo>")
+            case .regionEdit:
+                lines.append("<campo>Región «Editar»: qué debe cambiar dentro de la caja marcada</campo>")
+            case .regionNew:
+                lines.append("<campo>Región «Nuevo»: qué debe aparecer dentro de la caja marcada</campo>")
+            case .regionMove:
+                lines.append("<campo>Región «Mover»: detalle opcional sobre el elemento que se mueve a la caja destino</campo>")
+            }
+            if context.regionHasReference {
+                lines.append("<referencia_region>Esta región tiene su propia imagen de referencia; la app ya la cita. Puedes referirte a ella como «the reference».</referencia_region>")
+            }
         }
         lines.append("<prompt_usuario>\n\(userPrompt.trimmingCharacters(in: .whitespacesAndNewlines))\n</prompt_usuario>")
         return lines.joined(separator: "\n")
@@ -205,7 +241,11 @@ public enum PromptEnhancer {
     // MARK: - Instrucciones (basadas en las guías oficiales de prompting de FLUX 3)
 
     public static func systemPrompt(for kind: Kind) -> String {
-        kind == .image ? imageSystemPrompt : videoSystemPrompt
+        switch kind {
+        case .image: return imageSystemPrompt
+        case .video: return videoSystemPrompt
+        case .edit: return editSystemPrompt
+        }
     }
 
     static let outputContract = """
@@ -294,6 +334,37 @@ public enum PromptEnhancer {
     - Nada de etiquetas de calidad ("4k", "masterpiece"); describe lo que se ve y se oye.
     - No escribas duración, resolución ni proporción dentro del prompt: van fuera. No uses etiquetas o sintaxis de otros modelos de vídeo.
     - Si el texto del usuario no es una petición de vídeo, devuélvelo igual y explícalo en las notas.
+
+    \(outputContract)
+    """
+
+    static let editSystemPrompt = """
+    Eres un experto en escribir instrucciones de edición para FLUX 3 Image, el modelo de imagen de Black Forest Labs. Trabajas dentro de FLUX Studio, la app de un estudio de interiorismo en Madrid, en la herramienta «Editar con precisión»: el usuario marca cajas sobre una imagen existente y escribe, para cada una, qué debe pasar. Tú conviertes ese texto (a menudo en español y escueto) en una instrucción breve y precisa en inglés.
+
+    ## Cómo se usa tu texto
+    La app ya construye el resto del prompt: cita la imagen original, nombra la caja y su posición, añade la imagen de referencia de la región si la hay y cierra con "Keep everything else — composition, lighting, other subjects, and style — exactly as in the reference image." Tu texto se inserta así:
+    - Región «Editar»: Apply this edit to the marked area <region_1> in the upper left: "TU TEXTO".
+    - Región «Nuevo»: Add a new element in the marked area <region_1> in the lower right: "TU TEXTO".
+    - Región «Mover»: Move the element in the marked area <region_1> from the upper left to the lower right: "TU TEXTO".
+    - Cambio en toda la imagen: va justo después de "Edit the first reference image." como una frase propia.
+    Por eso NO escribas posiciones, cajas, coordenadas, "region", "image 1", "ref_image" ni la frase de cierre, y no uses comillas dobles.
+
+    ## Cómo escribirlo
+    - Breve: una frase, como mucho dos. Mejorar no es alargar.
+    - Región «Editar»: una instrucción de cambio concreta ("replace the sofa with a deep bouclé sofa in warm ivory, matching the room's daylight and perspective").
+    - Región «Nuevo»: describe el elemento que aparece, como sintagma nominal concreto ("a slim brushed-bronze floor lamp with a linen drum shade, casting a soft warm glow on the wall").
+    - Región «Mover»: un detalle sobre cómo queda el elemento en su sitio nuevo ("rotated slightly to face the window, keeping its scale and shadow consistent").
+    - Cambio global: una instrucción que afecta a toda la imagen (luz, hora del día, paleta, estación, estilo) diciendo qué cambia ("Change the lighting to late-afternoon golden sunlight from the window on the left, with long warm shadows").
+    - Nombra materiales y acabados concretos (travertine, bouclé, oiled oak, lime plaster, brushed bronze; matte, honed) y los colores en palabras.
+    - Cuando ayude a que encaje, pide coherencia con la escena: misma perspectiva, luz y escala.
+    - Quitar algo es una instrucción ("remove the vase and fill the area with the matching oak floor"), no una negación.
+    - Si la región tiene referencia, apóyate en ella ("the armchair from the reference, keeping its fabric and color").
+
+    ## Reglas
+    - Escribe en inglés, aunque el usuario escriba en español. Un texto que deba leerse dentro de la imagen se queda en su idioma original, entre comillas simples.
+    - Respeta lo que el usuario ya decidió; no cambies la intención ni añadas elementos que no ha pedido.
+    - Nada de etiquetas de calidad ("8k", "masterpiece", "ultra detailed").
+    - Si el texto del usuario no es una instrucción de edición, devuélvelo igual y explícalo en las notas.
 
     \(outputContract)
     """

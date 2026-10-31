@@ -79,6 +79,8 @@ Al arrastrar una imagen sobre la pantalla aparecen dos zonas:
 
 En la caja de **Generar** y de **Vídeo** hay un botón **Mejorar** (⌘E). Envía tu idea a **Claude Haiku 5.5**, que la reescribe en inglés siguiendo las guías oficiales de prompting de FLUX 3 sin cambiar lo que pediste. Debajo explica en español qué ha cambiado, y con **↶** vuelves a tu texto.
 
+En **Editar** también está: junto a «Cambio en toda la imagen» y, con la varita pequeña, dentro de la tarjeta de cada región (Editar, Nuevo y Mover). Ahí Claude escribe una instrucción corta y concreta, pensada para encajar en el prompt de edición que monta la app (sin repetir posiciones ni cajas). ⌘E mejora la región abierta o, si no hay ninguna, el cambio global.
+
 Para usarlo, crea una API key en https://console.anthropic.com → API Keys y pégala en **Ajustes → Mejorar prompts con Claude → Guardar en el Llavero**. Pulsa **Probar** para comprobarla. Cada mejora cuesta décimas de céntimo.
 
 ## Dónde se guardan los archivos

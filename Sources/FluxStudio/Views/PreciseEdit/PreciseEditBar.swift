@@ -44,11 +44,19 @@ struct PreciseEditBar: View {
                 }
             }
 
-            TextField("Cambio en toda la imagen (opcional)", text: $model.globalInstruction, axis: .vertical)
-                .textFieldStyle(.plain)
-                .font(.system(size: 14))
-                .lineLimit(1...4)
-                .padding(.horizontal, 6)
+            HStack(alignment: .top, spacing: 8) {
+                TextField("Cambio en toda la imagen (opcional)", text: $model.globalInstruction, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 14))
+                    .lineLimit(1...4)
+                    .padding(.horizontal, 6)
+                    .padding(.top, 5)
+
+                // ⌘E mejora la región abierta si la hay; si no, el cambio global.
+                PromptEnhanceButton(text: $model.globalInstruction, usesShortcut: model.selectedRegionID == nil) {
+                    PromptEnhancer.Context(kind: .edit, editField: .global)
+                }
+            }
 
             HStack(spacing: 8) {
                 Button {

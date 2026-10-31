@@ -10,6 +10,22 @@ struct RegionInspector: View {
 
     private var number: Int { model.number(of: region.id) }
 
+    private var instruction: Binding<String> {
+        let id = region.id
+        return Binding(
+            get: { model.regions.first { $0.id == id }?.instruction ?? "" },
+            set: { text in model.update(id) { $0.instruction = text } }
+        )
+    }
+
+    private var editField: PromptEnhancer.EditField {
+        switch region.kind {
+        case .new: return .regionNew
+        case .move: return .regionMove
+        default: return .regionEdit
+        }
+    }
+
     private var placeholder: String {
         switch region.kind {
         case .edit: return "¿Qué debe cambiar aquí?"
@@ -55,18 +71,26 @@ struct RegionInspector: View {
                     .font(.system(size: 11))
                     .foregroundStyle(Theme.textSecondary)
             } else {
-                TextField(placeholder, text: Binding(
-                    get: { region.instruction },
-                    set: { text in model.update(region.id) { $0.instruction = text } }
-                ), axis: .vertical)
-                .textFieldStyle(.plain)
-                .font(.system(size: 13))
-                .lineLimit(1...4)
-                .focused($focused)
-                .padding(8)
-                .background(RoundedRectangle(cornerRadius: 8).fill(Color.white))
-                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.border))
-                .onSubmit { model.selectedRegionID = nil }
+                HStack(alignment: .top, spacing: 6) {
+                    TextField(placeholder, text: instruction, axis: .vertical)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 13))
+                        .lineLimit(1...6)
+                        .focused($focused)
+                        .padding(8)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white))
+                        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.border))
+                        .onSubmit { model.selectedRegionID = nil }
+
+                    PromptEnhanceButton(text: instruction, compact: true) {
+                        PromptEnhancer.Context(
+                            kind: .edit,
+                            editField: editField,
+                            regionHasReference: region.reference != nil
+                        )
+                    }
+                    .padding(.top, 3)
+                }
             }
 
             if region.kind == .move {

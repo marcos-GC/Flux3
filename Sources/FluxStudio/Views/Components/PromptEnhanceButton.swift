@@ -6,6 +6,10 @@ import SwiftUI
 struct PromptEnhanceButton: View {
     @EnvironmentObject private var state: AppState
     @Binding var text: String
+    /// Versión pequeña (solo icono) para tarjetas estrechas como la de una región.
+    var compact = false
+    /// Si responde a ⌘E. Solo debe tenerlo un botón visible a la vez.
+    var usesShortcut = true
     let context: () -> PromptEnhancer.Context
 
     @State private var isWorking = false
@@ -23,10 +27,12 @@ struct PromptEnhanceButton: View {
                     } else {
                         Image(systemName: "wand.and.stars").font(.system(size: 11, weight: .medium))
                     }
-                    Text(isWorking ? "Mejorando…" : "Mejorar").font(.system(size: 12, weight: .medium))
+                    if !compact {
+                        Text(isWorking ? "Mejorando…" : "Mejorar").font(.system(size: 12, weight: .medium))
+                    }
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
+                .padding(.horizontal, compact ? 7 : 10)
+                .padding(.vertical, compact ? 5 : 6)
                 .background(Capsule().fill(Theme.region.opacity(0.12)))
                 .overlay(Capsule().strokeBorder(Theme.region.opacity(0.5)))
                 .foregroundStyle(Theme.textPrimary)
@@ -34,8 +40,8 @@ struct PromptEnhanceButton: View {
             }
             .buttonStyle(.plain)
             .disabled(isWorking || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            .keyboardShortcut("e", modifiers: .command)
-            .help("Mejorar el prompt con Claude Haiku siguiendo las guías de FLUX 3 (⌘E)")
+            .keyboardShortcut(usesShortcut ? KeyboardShortcut("e", modifiers: .command) : nil)
+            .help("Mejorar el texto con Claude Haiku siguiendo las guías de FLUX 3" + (usesShortcut ? " (⌘E)" : ""))
             .popover(isPresented: $showNotes, arrowEdge: .top) {
                 VStack(alignment: .leading, spacing: 8) {
                     SectionLabel("Qué ha cambiado Claude")
