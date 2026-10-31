@@ -113,6 +113,12 @@ final class AppState: ObservableObject {
     @Published var confirmNew = false
     /// Imágenes pegadas con ⌘V a la espera de elegir «Editar» o «Referencia».
     @Published var pendingPaste: [URL] = []
+    /// Prompt y parámetros copiados con «Copiar prompt y parámetros» (⌥⌘C).
+    @Published var copiedRecipe: PromptRecipe?
+    /// Hoja abierta de «Guardar en Prompts guardados».
+    @Published var recipeDraft: RecipeDraft?
+    /// Aviso breve abajo (p. ej. «Prompt copiado»).
+    @Published var notice: String?
     /// Segunda imagen para comparar con la seleccionada (⌘-clic en la tira o «Comparar con…»).
     @Published var compareURL: URL?
     @Published var activeJobs: [ActiveJob] = []
@@ -128,6 +134,7 @@ final class AppState: ObservableObject {
     let tryOn: TryOnModel
     let video: VideoModel
     let collage: CollageModel
+    let library: PromptLibrary
     private var tasks: [UUID: [Task<Void, Never>]] = [:]
     /// Petición a la que pertenece cada resultado (las variantes de una misma petición).
     private var resultGroups: [URL: UUID] = [:]
@@ -142,6 +149,7 @@ final class AppState: ObservableObject {
         self.tryOn = TryOnModel(settings: settings)
         self.video = VideoModel(settings: settings)
         self.collage = CollageModel(settings: settings)
+        self.library = PromptLibrary(settings: settings)
         imageParams.count = settings.defaultImageCount
         imageParams.safety = SafetyTolerance.clamp(settings.defaultSafety, for: .flux3Image)
     }

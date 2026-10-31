@@ -52,6 +52,8 @@ struct PreciseEditBar: View {
                     .padding(.horizontal, 6)
                     .padding(.top, 5)
 
+                PromptLibraryMenu(library: state.library)
+
                 // ⌘E mejora la región abierta si la hay; si no, el cambio global.
                 PromptEnhanceButton(text: $model.globalInstruction, usesShortcut: model.selectedRegionID == nil) {
                     PromptEnhancer.Context(kind: .edit, editField: .global)

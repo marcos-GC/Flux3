@@ -40,6 +40,13 @@ struct ResultActions: View {
         Divider()
         if let record {
             Button("Reutilizar prompt y parámetros") { state.reuse(record) }
+            Button("Copiar prompt y parámetros") { state.copyRecipe(from: fileURL) }
+            Button("Guardar en Prompts guardados…") { state.saveRecipe(from: fileURL) }
+        }
+        if let copied = state.copiedRecipe {
+            Button("Pegar prompt y parámetros en \(state.tool.hasPromptField ? state.tool.title : WorkspaceTool.generate.title)") {
+                state.apply(copied)
+            }
         }
         Menu("Enviar a") {
             SendToButtons(fileURL: fileURL)

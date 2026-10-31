@@ -30,6 +30,17 @@ struct FluxStudioApp: App {
                 Button("Nuevo") { state.requestNew() }
                     .keyboardShortcut("n", modifiers: .command)
             }
+            CommandGroup(after: .pasteboard) {
+                Divider()
+                Button("Copiar prompt y parámetros") {
+                    if let url = state.focusedURL { state.copyRecipe(from: url) }
+                }
+                .keyboardShortcut("c", modifiers: [.command, .option])
+                Button("Pegar prompt y parámetros") { state.pasteRecipe() }
+                    .keyboardShortcut("v", modifiers: [.command, .option])
+                Button("Guardar prompt en Prompts guardados…") { state.saveCurrentRecipe() }
+                    .keyboardShortcut("s", modifiers: [.command, .option])
+            }
         }
     }
 }

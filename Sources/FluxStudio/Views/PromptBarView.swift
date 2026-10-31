@@ -72,6 +72,8 @@ struct PromptBarView: View {
                         .environmentObject(state)
                 }
 
+                PromptLibraryMenu(library: state.library)
+
                 PromptEnhanceButton(text: $state.prompt) {
                     PromptEnhancer.Context(
                         kind: .image,

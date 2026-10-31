@@ -55,6 +55,8 @@ struct SidebarView: View {
 
             SidebarItem(icon: AppMode.history.icon, title: AppMode.history.title,
                         isSelected: state.mode == .history, help: "Todo lo generado") { state.mode = .history }
+            SidebarItem(icon: AppMode.library.icon, title: AppMode.library.title,
+                        isSelected: state.mode == .library, help: "Prompts guardados con su título y explicación") { state.mode = .library }
             SidebarItem(icon: AppMode.settings.icon, title: AppMode.settings.title,
                         isSelected: state.mode == .settings, help: "API key, región y carpeta") { state.mode = .settings }
         }

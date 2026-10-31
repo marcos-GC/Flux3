@@ -92,7 +92,7 @@ enum Clipboard {
 
         switch key {
         case "c" where !editingText:
-            guard state.mode != .settings, state.mode != .history, let url = state.focusedURL else { return false }
+            guard state.mode == .generate, let url = state.focusedURL else { return false }
             copy(url)
             return true
         case "v":

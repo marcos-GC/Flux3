@@ -47,6 +47,28 @@ struct ContentView: View {
         } message: {
             Text("Editar la abre en grande para escribir el cambio o dibujar regiones. Como referencia se añade a la caja del prompt («image 1, 2…») para generar algo nuevo.")
         }
+        .sheet(item: $state.recipeDraft) { draft in
+            RecipeEditorSheet(draft: draft) { state.recipeDraft = nil }
+                .environmentObject(state)
+        }
+        // Aviso breve (prompt copiado, guardado…).
+        .overlay(alignment: .bottom) {
+            if let notice = state.notice {
+                Text(notice)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Theme.textPrimary)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .surfaceStyle(cornerRadius: 16)
+                    .padding(.bottom, 120)
+                    .transition(.opacity)
+                    .task(id: notice) {
+                        try? await Task.sleep(for: .seconds(3))
+                        if state.notice == notice { state.notice = nil }
+                    }
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: state.notice)
         .onAppear {
             if clipboardMonitor == nil { clipboardMonitor = Clipboard.installMonitor(state: state) }
         }
@@ -74,6 +96,8 @@ struct ContentView: View {
             SettingsView()
         case .history:
             HistoryView()
+        case .library:
+            PromptLibraryView(library: state.library)
         default:
             WorkspaceView()
         }

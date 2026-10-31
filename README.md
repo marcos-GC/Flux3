@@ -79,6 +79,12 @@ Al arrastrar una imagen sobre la pantalla aparecen dos zonas:
 
 **Tolerancia de seguridad:** controla lo estricta que es la moderación de BFL (0 = muy estricto). No cambia el estilo. Va de 0 a 4 en FLUX 3 Image y Vídeo, y de 0 a 5 en Borrar, Ampliar, Deblur y Probador.
 
+### Copiar prompts y «Prompts guardados»
+
+- **Copiar y pegar prompt y parámetros:** clic derecho en una foto → **«Copiar prompt y parámetros»** (o **⌥⌘C** con la foto en grande). Luego, en la herramienta donde estés (Generar, Editar, Collage, Ampliar, Vídeo), **⌥⌘V** o clic derecho → «Pegar prompt y parámetros» pone el texto y los ajustes (resolución, proporción, tolerancia…). El texto también queda en el portapapeles para pegarlo con ⌘V donde quieras.
+- **Prompts guardados** (barra lateral, icono de libros): tu biblioteca de prompts que han funcionado, con **título**, **explicación**, el prompt, sus parámetros y una miniatura. Se guardan con clic derecho en una foto → **«Guardar en Prompts guardados…»**, con el botón de libros junto a la caja del prompt («Guardar este prompt…») o con **⌥⌘S**. Desde la biblioteca: **Usar** (lo pone en la herramienta abierta), Copiar, Editar y Borrar, con buscador. El botón de libros también da acceso rápido a los últimos.
+- Se guardan en «Prompts guardados», dentro de la carpeta de salida.
+
 ### Collage (montaje + «Hacer realista»)
 
 Una capa propia de la app, por encima de FLUX: un pequeño Photoshop para montar escenas y que FLUX las convierta en una foto realista.

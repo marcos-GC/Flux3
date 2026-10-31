@@ -2,7 +2,7 @@ import Foundation
 
 /// Modos de la barra lateral.
 enum AppMode: String, CaseIterable, Identifiable {
-    case generate, preciseEdit, outpaint, erase, tryOn, deblur, video, history, settings
+    case generate, preciseEdit, outpaint, erase, tryOn, deblur, video, history, library, settings
 
     var id: String { rawValue }
 
@@ -18,6 +18,7 @@ enum AppMode: String, CaseIterable, Identifiable {
         case .deblur: return "Deblur"
         case .video: return "Vídeo"
         case .history: return "Historial"
+        case .library: return "Prompts"
         case .settings: return "Ajustes"
         }
     }
@@ -32,6 +33,7 @@ enum AppMode: String, CaseIterable, Identifiable {
         case .deblur: return "camera.aperture"
         case .video: return "film"
         case .history: return "clock.arrow.circlepath"
+        case .library: return "books.vertical"
         case .settings: return "gearshape"
         }
     }

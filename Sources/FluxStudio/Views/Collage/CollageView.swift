@@ -694,6 +694,7 @@ private struct CollageBar: View {
                     .lineLimit(1...3)
                     .padding(.horizontal, 6)
                     .padding(.top, 5)
+                PromptLibraryMenu(library: state.library)
                 PromptEnhanceButton(text: $model.extraPrompt) {
                     PromptEnhancer.Context(kind: .edit, editField: .global)
                 }
