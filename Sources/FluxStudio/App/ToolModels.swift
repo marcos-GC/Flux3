@@ -435,15 +435,18 @@ final class FillModel: MaskToolModel {
         let resolution = resolution, safety = safety, format = format
         let grow = Int(grow), feather = Int(feather)
         let originalURL = input.url
-        let transform: AppState.JobTransform? = pasteOnlyMask ? { generated in
-            try await Task.detached(priority: .userInitiated) {
-                let original = try Data(contentsOf: originalURL)
-                return try MaskFill.compositeFile(
-                    originalData: original, generatedData: generated, strokes: strokes, inverted: inverted,
-                    grow: grow, feather: feather, format: format
-                )
-            }.value
-        } : nil
+        var transform: AppState.JobTransform?
+        if pasteOnlyMask {
+            transform = { (generated: Data) async throws -> (data: Data, mimeType: String) in
+                try await Task.detached(priority: .userInitiated) { () throws -> (data: Data, mimeType: String) in
+                    let original = try Data(contentsOf: originalURL)
+                    return try MaskFill.compositeFile(
+                        originalData: original, generatedData: generated, strokes: strokes, inverted: inverted,
+                        grow: grow, feather: feather, format: format
+                    )
+                }.value
+            }
+        }
         runner.run(state: state, endpoint: .flux3Image, modelName: "Pintar y rellenar", prompt: instruction,
                    referenceCount: reference == nil ? 0 : 1, source: originalURL,
                    sentPrompt: sent, prefix: "fill", transform: transform) {

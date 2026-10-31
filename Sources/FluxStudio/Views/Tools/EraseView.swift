@@ -80,11 +80,7 @@ private struct MaskCanvas: View {
                 .offset(x: frame.minX, y: frame.minY)
                 .allowsHitTesting(false)
 
-                if model.shape == .polygon {
-                    PolygonOverlay(points: model.pendingPolygon.map { denormalized($0, frame: frame) },
-                                   hover: hover, closeRadius: Self.closeRadius)
-                        .allowsHitTesting(false)
-                }
+                polygonOverlay(frame: frame)
 
                 if let hover, model.shape == .brush {
                     let r = model.brushRadius * frame.width
@@ -100,9 +96,7 @@ private struct MaskCanvas: View {
                     .frame(width: frame.width, height: frame.height)
                     .contentShape(Rectangle())
                     .offset(x: frame.minX, y: frame.minY)
-                    .gesture(model.shape == .polygon
-                             ? AnyGesture(polygonGesture(frame: frame))
-                             : AnyGesture(paintGesture(frame: frame)))
+                    .gesture(activeGesture(frame: frame))
                     .onContinuousHover(coordinateSpace: .named("mask")) { phase in
                         switch phase {
                         case .active(let p): hover = p
@@ -112,6 +106,22 @@ private struct MaskCanvas: View {
             }
             .coordinateSpace(name: "mask")
         }
+    }
+
+    @ViewBuilder
+    private func polygonOverlay(frame: CGRect) -> some View {
+        if model.shape == .polygon {
+            let points: [CGPoint] = model.pendingPolygon.map { denormalized($0, frame: frame) }
+            PolygonOverlay(points: points, hover: hover, closeRadius: Self.closeRadius)
+                .allowsHitTesting(false)
+        }
+    }
+
+    private func activeGesture(frame: CGRect) -> AnyGesture<DragGesture.Value> {
+        if model.shape == .polygon {
+            return AnyGesture(polygonGesture(frame: frame))
+        }
+        return AnyGesture(paintGesture(frame: frame))
     }
 
     /// Distancia (en puntos de pantalla) a la que un clic sobre el primer vértice cierra el polígono.
@@ -128,7 +138,9 @@ private struct MaskCanvas: View {
                 hover = value.location
                 if model.canClosePolygon, let first = model.pendingPolygon.first {
                     let p = denormalized(first, frame: frame)
-                    if hypot(p.x - value.location.x, p.y - value.location.y) <= Self.closeRadius {
+                    let dx: CGFloat = p.x - value.location.x
+                    let dy: CGFloat = p.y - value.location.y
+                    if (dx * dx + dy * dy).squareRoot() <= Self.closeRadius {
                         model.closePolygon()
                         return
                     }
@@ -280,6 +292,12 @@ private struct PolygonOverlay: View {
     let hover: CGPoint?
     let closeRadius: CGFloat
 
+    private func isNear(_ a: CGPoint, _ b: CGPoint) -> Bool {
+        let dx: CGFloat = a.x - b.x
+        let dy: CGFloat = a.y - b.y
+        return (dx * dx + dy * dy).squareRoot() <= closeRadius
+    }
+
     var body: some View {
         Canvas { ctx, _ in
             guard let first = points.first else { return }
@@ -295,7 +313,7 @@ private struct PolygonOverlay: View {
                 ctx.stroke(dot, with: .color(.black.opacity(0.5)), lineWidth: 1)
             }
             // Si el ratón está sobre el primer punto, se indica que el clic cierra la forma.
-            if points.count >= 3, let hover, hypot(hover.x - first.x, hover.y - first.y) <= closeRadius {
+            if points.count >= 3, let hover, isNear(hover, first) {
                 let ring = Path(ellipseIn: CGRect(x: first.x - closeRadius, y: first.y - closeRadius,
                                                   width: closeRadius * 2, height: closeRadius * 2))
                 ctx.stroke(ring, with: .color(.white), lineWidth: 2)
