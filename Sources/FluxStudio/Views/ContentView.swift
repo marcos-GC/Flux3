@@ -3,6 +3,11 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject private var state: AppState
+    @State private var clipboardMonitor: Any?
+
+    private var pastePrompt: Binding<Bool> {
+        Binding(get: { !state.pendingPaste.isEmpty }, set: { if !$0 { state.pendingPaste = [] } })
+    }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -23,6 +28,31 @@ struct ContentView: View {
             Button("Cancelar", role: .cancel) {}
         } message: {
             Text("Se quitan el prompt, las referencias y la imagen seleccionada. Lo que se esté generando sigue por detrás y aparecerá en la tira; los resultados siguen en el Historial.")
+        }
+        .confirmationDialog(
+            state.pendingPaste.count > 1 ? "¿Qué hacemos con las \(state.pendingPaste.count) imágenes pegadas?" : "¿Qué hacemos con la imagen pegada?",
+            isPresented: pastePrompt
+        ) {
+            Button("Editar esta imagen") {
+                let urls = state.pendingPaste
+                state.pendingPaste = []
+                state.receive(urls, as: .edit)
+            }
+            Button("Usar como referencia") {
+                let urls = state.pendingPaste
+                state.pendingPaste = []
+                state.receive(urls, as: .reference)
+            }
+            Button("Cancelar", role: .cancel) { state.pendingPaste = [] }
+        } message: {
+            Text("Editar la abre en grande para escribir el cambio o dibujar regiones. Como referencia se añade a la caja del prompt («image 1, 2…») para generar algo nuevo.")
+        }
+        .onAppear {
+            if clipboardMonitor == nil { clipboardMonitor = Clipboard.installMonitor(state: state) }
+        }
+        .onDisappear {
+            if let clipboardMonitor { NSEvent.removeMonitor(clipboardMonitor) }
+            clipboardMonitor = nil
         }
         .alert(item: $state.alert) { alert in
             if alert.opensSettings {

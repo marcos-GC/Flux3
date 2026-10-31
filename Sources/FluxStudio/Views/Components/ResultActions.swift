@@ -110,10 +110,10 @@ func fileDragProvider(_ url: URL) -> NSItemProvider {
     return provider
 }
 
+/// Copia el archivo y la imagen: se puede pegar con ⌘V en la app, en el Finder o en otras apps.
+@MainActor
 func copyImage(_ url: URL) {
-    guard let image = NSImage(contentsOf: url) else { return }
-    NSPasteboard.general.clearContents()
-    NSPasteboard.general.writeObjects([image])
+    Clipboard.copy(url)
 }
 
 func copyText(_ text: String) {

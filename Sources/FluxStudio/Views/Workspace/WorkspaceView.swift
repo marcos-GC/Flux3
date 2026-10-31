@@ -206,19 +206,7 @@ struct WorkspaceView: View {
 
     /// Imágenes soltadas desde el Finder.
     private func handleDrop(_ urls: [URL], zone: StudioDropZone) {
-        let images = urls.filter(ReferenceImage.isSupported)
-        guard !images.isEmpty else {
-            state.alert = AppAlert(title: "Archivo no compatible", message: "Solo se pueden soltar imágenes (JPEG, PNG, WebP, HEIC…).")
-            return
-        }
-        switch zone {
-        case .edit:
-            // Se abre directamente en Editar: escribir el cambio o dibujar regiones.
-            state.focus(images[0], tool: .edit)
-        case .reference:
-            state.addReferences(images)
-            state.selectTool(.generate)
-        }
+        state.receive(urls, as: zone)
     }
 
     /// Carga la imagen seleccionada en la herramienta activa.

@@ -107,6 +107,8 @@ final class AppState: ObservableObject {
     @Published var askFocusedUse = false
     /// Confirmación de «Nuevo» cuando hay algo escrito.
     @Published var confirmNew = false
+    /// Imágenes pegadas con ⌘V a la espera de elegir «Editar» o «Referencia».
+    @Published var pendingPaste: [URL] = []
     @Published var activeJobs: [ActiveJob] = []
     /// De qué imagen sale cada resultado (para Antes / Después).
     @Published private(set) var parents: [URL: URL] = [:]
