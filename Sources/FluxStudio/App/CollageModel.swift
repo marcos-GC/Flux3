@@ -353,8 +353,8 @@ final class CollageModel: ObservableObject {
 
     /// Vuelve a cargar la foto original del archivo (para capas recortadas con versiones anteriores).
     func restoreOriginalPhoto(_ id: UUID, state: AppState) {
-        guard let layer = layers.first(where: { $0.id == id }),
-              let cg = ImageEncoder.thumbnail(fileURL: layer.sourceURL, maxPixelSize: Self.maxLayerSide) else {
+        guard let layer = layers.first(where: { $0.id == id }) else { return }
+        guard let cg = ImageEncoder.thumbnail(fileURL: layer.sourceURL, maxPixelSize: Self.maxLayerSide) else {
             state.alert = AppAlert(title: "No se encuentra la foto original",
                                    message: "El archivo de «\(layer.name)» ya no está donde estaba.")
             return
