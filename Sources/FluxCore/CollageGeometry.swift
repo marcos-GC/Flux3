@@ -185,6 +185,102 @@ public struct Homography: Equatable, Sendable {
         let w = g * u + h * v + 1
         return CGPoint(x: (a * u + b * v + c) / w, y: (d * u + e * v + f) / w)
     }
+
+    /// Lo contrario: de un punto del lienzo a (u, v) dentro de la imagen (0…1 si cae dentro).
+    /// Sirve para pintar con la goma sobre una capa girada o en perspectiva.
+    public func invert(_ p: CGPoint) -> CGPoint? {
+        // Adjunta de [[a b c] [d e f] [g h 1]]; el determinante se cancela al dividir.
+        let r0 = (e - f * h, c * h - b, b * f - c * e)
+        let r1 = (f * g - d, a - c * g, c * d - a * f)
+        let r2 = (d * h - e * g, b * g - a * h, a * e - b * d)
+        let u = r0.0 * p.x + r0.1 * p.y + r0.2
+        let v = r1.0 * p.x + r1.1 * p.y + r1.2
+        let w = r2.0 * p.x + r2.1 * p.y + r2.2
+        guard abs(w) > 1e-12 else { return nil }
+        return CGPoint(x: u / w, y: v / w)
+    }
+}
+
+// MARK: - Proyecto guardado
+
+/// Lo que se guarda de un collage para retomarlo otro día (`proyecto.json` dentro de su carpeta,
+/// junto a la base y las imágenes de cada capa en PNG).
+public struct CollageProjectFile: Codable, Equatable, Sendable {
+    public struct Layer: Codable, Equatable, Sendable {
+        public var id: UUID
+        /// Archivo original del objeto (para enviarlo como referencia, si sigue existiendo).
+        public var source: String
+        /// Imagen de la capa (ya recortada si se quitó el fondo), dentro de la carpeta del proyecto.
+        public var imageFile: String
+        /// Máscara de la goma (gris: blanco = se ve), si se ha borrado algo.
+        public var maskFile: String?
+        /// Esquinas [x, y] en píxeles de la base: arriba-izq., arriba-der., abajo-der., abajo-izq.
+        public var corners: [[Double]]
+        public var opacity: Double
+        public var visible: Bool
+        public var cutOut: Bool
+
+        public init(id: UUID, source: String, imageFile: String, maskFile: String?, corners: [[Double]],
+                    opacity: Double, visible: Bool, cutOut: Bool) {
+            self.id = id
+            self.source = source
+            self.imageFile = imageFile
+            self.maskFile = maskFile
+            self.corners = corners
+            self.opacity = opacity
+            self.visible = visible
+            self.cutOut = cutOut
+        }
+
+        public var quad: CollageQuad? {
+            guard corners.count == 4, corners.allSatisfy({ $0.count == 2 }) else { return nil }
+            return CollageQuad(corners: corners.map { CGPoint(x: $0[0], y: $0[1]) })
+        }
+    }
+
+    public var version = 1
+    public var name: String
+    public var created: Date
+    public var modified: Date
+    public var baseFile: String
+    public var baseSource: String?
+    public var extraPrompt: String
+    public var resolution: String
+    public var sendOriginals: Bool
+    public var layers: [Layer]
+
+    public init(name: String, created: Date, modified: Date, baseFile: String, baseSource: String?,
+                extraPrompt: String, resolution: String, sendOriginals: Bool, layers: [Layer]) {
+        self.name = name
+        self.created = created
+        self.modified = modified
+        self.baseFile = baseFile
+        self.baseSource = baseSource
+        self.extraPrompt = extraPrompt
+        self.resolution = resolution
+        self.sendOriginals = sendOriginals
+        self.layers = layers
+    }
+
+    public static let fileName = "proyecto.json"
+    public static let folderExtension = "fluxcollage"
+
+    public func encoded() throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        return try encoder.encode(self)
+    }
+
+    public static func decode(_ data: Data) throws -> CollageProjectFile {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode(CollageProjectFile.self, from: data)
+    }
+}
+
+extension CollageQuad {
+    public var cornerArrays: [[Double]] { corners.map { [Double($0.x), Double($0.y)] } }
 }
 
 // MARK: - Ayudas de vectores

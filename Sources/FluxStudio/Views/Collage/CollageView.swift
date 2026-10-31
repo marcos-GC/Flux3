@@ -64,12 +64,22 @@ struct CollageWorkspace: View {
         if flags == [.command, .shift], key == "z" { model.redo(); return true }
         guard let id = model.selectedID else { return false }
         if flags == .command, key == "d" { model.duplicate(id); return true }
+        if flags.isEmpty {
+            switch key {
+            case "e": model.brushMode = model.brushMode == .erase ? nil : .erase; return true
+            case "r": model.brushMode = model.brushMode == .restore ? nil : .restore; return true
+            case "v": model.brushMode = nil; return true
+            case "[": model.brushSize = max(4, model.brushSize / 1.25); return true
+            case "]": model.brushSize = min(400, model.brushSize * 1.25); return true
+            default: break
+            }
+        }
         switch event.keyCode {
         case 51, 117: // ⌫ / Supr
             model.remove(id)
             return true
-        case 53: // Esc
-            model.selectedID = nil
+        case 53: // Esc: primero deja la goma; si no, quita la selección.
+            if model.brushMode != nil { model.brushMode = nil } else { model.selectedID = nil }
             return true
         case 123, 124, 125, 126: // flechas: mover un poco (⇧ = más)
             let step: CGFloat = (flags.contains(.shift) ? 10 : 1) * max(1, model.canvasSize.width / 1000)
@@ -127,6 +137,8 @@ private struct CollageCanvas: View {
     @ObservedObject var model: CollageModel
     @State private var drag: CollageDrag?
     @State private var pressedNothing = false
+    @State private var painting = false
+    @State private var hoverPoint: CGPoint?
 
     var body: some View {
         GeometryReader { geo in
@@ -159,12 +171,40 @@ private struct CollageCanvas: View {
                 }
 
                 if let layer = model.selected, layer.isVisible {
-                    CollageSelection(quad: layout.viewQuad(layer.quad), busy: model.cuttingOut.contains(layer.id))
+                    if model.brushMode != nil {
+                        // Con la goma, solo el contorno de la capa (sin tiradores).
+                        Path { path in
+                            let q = layout.viewQuad(layer.quad)
+                            path.move(to: q.corners[0])
+                            for i in 1..<4 { path.addLine(to: q.corners[i]) }
+                            path.closeSubpath()
+                        }
+                        .stroke(Theme.region.opacity(0.6), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                        .allowsHitTesting(false)
+                    } else {
+                        CollageSelection(quad: layout.viewQuad(layer.quad), busy: model.cuttingOut.contains(layer.id))
+                    }
+                }
+
+                // Cursor del pincel.
+                if model.brushMode != nil, model.selected != nil, let p = hoverPoint {
+                    Circle()
+                        .strokeBorder(model.brushMode == .erase ? Color.white : Theme.region, lineWidth: 1.5)
+                        .background(Circle().strokeBorder(Color.black.opacity(0.35), lineWidth: 0.5).padding(-1))
+                        .frame(width: model.brushSize, height: model.brushSize)
+                        .offset(x: p.x - model.brushSize / 2, y: p.y - model.brushSize / 2)
+                        .allowsHitTesting(false)
                 }
             }
             .contentShape(Rectangle())
             .gesture(dragGesture(layout))
             .coordinateSpace(name: "collage")
+            .onContinuousHover { phase in
+                switch phase {
+                case .active(let p): hoverPoint = p
+                case .ended: hoverPoint = nil
+                }
+            }
         }
     }
 
@@ -173,6 +213,16 @@ private struct CollageCanvas: View {
     private func dragGesture(_ layout: CollageLayout) -> some Gesture {
         DragGesture(minimumDistance: 0, coordinateSpace: .named("collage"))
             .onChanged { value in
+                hoverPoint = value.location
+                // Goma / recuperar: se pinta sobre la capa seleccionada.
+                if model.brushMode != nil, let layer = model.selected {
+                    if !painting {
+                        painting = true
+                        model.beginStroke()
+                    }
+                    paint(at: value.location, layer: layer, layout: layout)
+                    return
+                }
                 if drag == nil && !pressedNothing { begin(at: value.startLocation, layout: layout) }
                 guard var current = drag else { return }
                 let moved = value.translation.width != 0 || value.translation.height != 0
@@ -185,10 +235,26 @@ private struct CollageCanvas: View {
                 apply(current, location: value.location, layout: layout)
             }
             .onEnded { _ in
+                if painting {
+                    painting = false
+                    model.endStroke()
+                    return
+                }
                 if pressedNothing { model.selectedID = nil }
                 drag = nil
                 pressedNothing = false
             }
+    }
+
+    /// Lleva un punto de pantalla a píxeles de la imagen de la capa (aunque esté girada o en perspectiva).
+    private func paint(at location: CGPoint, layer: CollageLayer, layout: CollageLayout) {
+        guard let uv = layer.quad.homography.invert(layout.toCanvas(location)) else { return }
+        let w = CGFloat(layer.original.width), h = CGFloat(layer.original.height)
+        let imagePoint = CGPoint(x: uv.x * w, y: uv.y * h)
+        // Píxeles de pantalla por píxel de imagen (aproximado si hay perspectiva).
+        let screenPerPixel = layout.scale * layer.quad.approximateSize.width / max(w, 1)
+        let radius = model.brushSize / 2 / max(screenPerPixel, 0.0001)
+        model.continueStroke(to: imagePoint, radius: radius)
     }
 
     private func begin(at point: CGPoint, layout: CollageLayout) {
@@ -447,6 +513,8 @@ private struct CollageLayersPanel: View {
     @ViewBuilder
     private func selectedControls(_ layer: CollageLayer) -> some View {
         VStack(alignment: .leading, spacing: 8) {
+            brushControls(layer)
+
             Button { model.removeBackground(layer.id, state: state) } label: {
                 Label(model.cuttingOut.contains(layer.id) ? "Quitando fondo…" : (layer.isCutOut ? "Fondo quitado" : "Quitar fondo"),
                       systemImage: "wand.and.rays")
@@ -487,6 +555,38 @@ private struct CollageLayersPanel: View {
         }
     }
 
+    @ViewBuilder
+    private func brushControls(_ layer: CollageLayer) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Picker("Herramienta", selection: $model.brushMode) {
+                Text("Mover").tag(CollageModel.BrushMode?.none)
+                Text("Goma").tag(CollageModel.BrushMode?.some(.erase))
+                Text("Recuperar").tag(CollageModel.BrushMode?.some(.restore))
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .help("Mover/transformar (V) · Goma: borra partes de la capa (E) · Recuperar: vuelve a pintar lo borrado (R)")
+
+            if model.brushMode != nil {
+                HStack(spacing: 6) {
+                    Text("Tamaño").font(.system(size: 11)).foregroundStyle(Theme.textSecondary)
+                    Slider(value: $model.brushSize, in: 4...400)
+                        .controlSize(.mini)
+                    Text("\(Int(model.brushSize))").font(.system(size: 10)).monospacedDigit()
+                        .foregroundStyle(Theme.textSecondary)
+                        .frame(width: 26, alignment: .trailing)
+                }
+                .help("Tamaño del pincel ([ y ] para cambiarlo)")
+            }
+            if layer.mask != nil {
+                Button("Recuperar todo lo borrado") { model.clearMask(layer.id) }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Theme.region)
+            }
+        }
+    }
+
     private func iconButton(_ icon: String, _ help: String, color: Color = Theme.textPrimary,
                             action: @escaping () -> Void) -> some View {
         Button(action: action) {
@@ -505,10 +605,39 @@ private struct CollageLayersPanel: View {
 // MARK: - Barras
 
 private struct CollageToolbar: View {
+    @EnvironmentObject private var state: AppState
     @ObservedObject var model: CollageModel
 
     var body: some View {
         HStack(spacing: 2) {
+            Menu {
+                Button("Renombrar…") { renameProject() }
+                Button("Mostrar en Finder") { model.revealProjectInFinder() }
+                Divider()
+                Button("Nuevo collage") { model.reset() }
+                if !model.recentProjects.isEmpty {
+                    Menu("Abrir") {
+                        ForEach(model.recentProjects) { project in
+                            Button("\(project.name) · \(project.modified.formatted(date: .abbreviated, time: .shortened))") {
+                                model.open(project, state: state)
+                            }
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "square.3.layers.3d").font(.system(size: 12))
+                    Text(model.projectName.isEmpty ? "Collage sin guardar" : model.projectName)
+                        .font(.system(size: 11, weight: .medium))
+                        .lineLimit(1)
+                        .frame(maxWidth: 180)
+                }
+                .padding(.horizontal, 8)
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .help("Se guarda solo en «Collages/Proyectos», dentro de la carpeta de salida. Desde aquí puedes renombrarlo, abrir otro o empezar uno nuevo.")
+            divider
             ToolTextButton(icon: "photo.badge.plus", title: "Añadir objetos") { model.add(chooseImages()) }
             divider
             ToolTextButton(icon: "arrow.uturn.backward", title: "Deshacer") { model.undo() }
@@ -528,6 +657,7 @@ private struct CollageToolbar: View {
                 Lados: más ancho, estrecho, alto o bajo.
                 Círculo de arriba: girar (⇧ = de 15 en 15°).
                 Flechas: mover un poco · ⌘D duplicar · ⌫ borrar · ⌘Z deshacer.
+                Goma (E) y Recuperar (R) pintan sobre la capa seleccionada; [ y ] cambian el tamaño; V o Esc vuelven a mover.
                 """)
         }
         .padding(.horizontal, 6)
@@ -537,6 +667,20 @@ private struct CollageToolbar: View {
 
     private var divider: some View {
         Rectangle().fill(Theme.border).frame(width: 1, height: 20).padding(.horizontal, 6)
+    }
+
+    private func renameProject() {
+        let alert = NSAlert()
+        alert.messageText = "Nombre del collage"
+        alert.addButton(withTitle: "Guardar")
+        alert.addButton(withTitle: "Cancelar")
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
+        field.stringValue = model.projectName.isEmpty ? CollageModel.defaultName() : model.projectName
+        alert.accessoryView = field
+        alert.window.initialFirstResponder = field
+        if alert.runModal() == .alertFirstButtonReturn {
+            model.rename(field.stringValue)
+        }
     }
 }
 
@@ -647,7 +791,67 @@ private struct CollageEmptyState: View {
             Text("También puedes arrastrar una foto aquí o pegarla con ⌘V.")
                 .font(.system(size: 11))
                 .foregroundStyle(Theme.textSecondary)
+
+            if !model.recentProjects.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    SectionLabel("Seguir con un collage guardado")
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) {
+                            ForEach(model.recentProjects.prefix(12)) { project in
+                                RecentCollageCard(project: project) { model.open(project, state: state) }
+                                    .contextMenu {
+                                        Button("Abrir") { model.open(project, state: state) }
+                                        Button("Mostrar en Finder") { NSWorkspace.shared.activateFileViewerSelecting([project.url]) }
+                                        Button("Mover a la Papelera", role: .destructive) { model.deleteProject(project) }
+                                    }
+                            }
+                        }
+                    }
+                }
+                .frame(maxWidth: 720)
+                .padding(.top, 18)
+            }
         }
+        .padding(.horizontal, 32)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear { model.reloadRecentProjects() }
+    }
+}
+
+private struct RecentCollageCard: View {
+    let project: CollageProjectSummary
+    let action: () -> Void
+    @State private var thumbnail: NSImage?
+
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 4) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8).fill(Theme.placeholder)
+                    if let thumbnail {
+                        Image(nsImage: thumbnail).resizable().scaledToFill()
+                    } else {
+                        Image(systemName: "square.3.layers.3d").foregroundStyle(Theme.textSecondary)
+                    }
+                }
+                .frame(width: 150, height: 100)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                Text(project.name)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Theme.textPrimary)
+                    .lineLimit(1)
+                Text("\(project.layerCount) objetos · \(project.modified.formatted(date: .abbreviated, time: .shortened))")
+                    .font(.system(size: 10))
+                    .foregroundStyle(Theme.textSecondary)
+                    .lineLimit(1)
+            }
+            .frame(width: 150)
+        }
+        .buttonStyle(.plain)
+        .task(id: project.modified) {
+            // Sin caché: la miniatura cambia cada vez que se guarda el collage.
+            let url = project.preview
+            thumbnail = await Task.detached { NSImage(contentsOf: url) }.value
+        }
     }
 }

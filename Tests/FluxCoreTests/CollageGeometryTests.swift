@@ -86,4 +86,36 @@ final class CollageGeometryTests: XCTestCase {
         XCTAssertTrue(some.contains("image 2, image 3"))
         XCTAssertTrue(some.hasSuffix("warm evening light."))
     }
+
+    func testInverseHomographyRoundTrip() throws {
+        let quad = CollageQuad(corners: [
+            CGPoint(x: 10, y: 20), CGPoint(x: 300, y: 5), CGPoint(x: 280, y: 260), CGPoint(x: 40, y: 200),
+        ])
+        let h = quad.homography
+        let samples: [(CGFloat, CGFloat)] = [(0, 0), (0.3, 0.7), (1, 1), (0.5, 0.25)]
+        for (u, v) in samples {
+            let p = h.apply(u: u, v: v)
+            let back = try XCTUnwrap(h.invert(p))
+            XCTAssertEqual(back.x, u, accuracy: 1e-6)
+            XCTAssertEqual(back.y, v, accuracy: 1e-6)
+        }
+        // Fuera de la capa da valores fuera de 0…1.
+        let outside = try XCTUnwrap(h.invert(CGPoint(x: -100, y: -100)))
+        XCTAssertTrue(outside.x < 0 || outside.y < 0)
+    }
+
+    func testProjectFileRoundTrip() throws {
+        let layer = CollageProjectFile.Layer(
+            id: UUID(), source: "/tmp/cuenco.png", imageFile: "capa.png", maskFile: nil,
+            corners: rect.cornerArrays, opacity: 0.8, visible: true, cutOut: true
+        )
+        let file = CollageProjectFile(
+            name: "Librería salón", created: Date(timeIntervalSince1970: 1_790_000_000),
+            modified: Date(timeIntervalSince1970: 1_790_000_600), baseFile: "base.png", baseSource: nil,
+            extraPrompt: "luz de tarde", resolution: "2k", sendOriginals: true, layers: [layer]
+        )
+        let decoded = try CollageProjectFile.decode(try file.encoded())
+        XCTAssertEqual(decoded, file)
+        XCTAssertEqual(decoded.layers.first?.quad, rect)
+    }
 }
