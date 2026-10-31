@@ -101,7 +101,8 @@ struct PreciseEditBar: View {
                 if model.isGenerating {
                     HStack(spacing: 6) {
                         ProgressView().controlSize(.small)
-                        Text(model.statusText).font(.system(size: 12)).foregroundStyle(Theme.textSecondary)
+                        Text(model.runningCount > 1 ? "\(model.runningCount) ediciones en marcha" : model.statusText)
+                            .font(.system(size: 12)).foregroundStyle(Theme.textSecondary)
                     }
                     Button("Cancelar") { model.cancelGeneration() }
                         .buttonStyle(.plain)
@@ -132,7 +133,8 @@ struct PreciseEditBar: View {
     }
 
     private var canGenerate: Bool {
-        !model.isGenerating && model.hasSomethingToDo && !model.referencesBusy
+        // Se puede lanzar otra edición aunque haya alguna en marcha.
+        model.hasSomethingToDo && !model.referencesBusy
     }
 }
 

@@ -22,7 +22,7 @@ struct ContentView: View {
             Button("Empezar de cero", role: .destructive) { state.startFresh() }
             Button("Cancelar", role: .cancel) {}
         } message: {
-            Text("Se quitan el prompt, las referencias y la imagen seleccionada. Los resultados siguen en la tira y en el Historial.")
+            Text("Se quitan el prompt, las referencias y la imagen seleccionada. Lo que se esté generando sigue por detrás y aparecerá en la tira; los resultados siguen en el Historial.")
         }
         .alert(item: $state.alert) { alert in
             if alert.opensSettings {

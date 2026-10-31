@@ -63,7 +63,9 @@ final class PreciseEditModel: ObservableObject {
     @Published var grounding = true
     @Published var zoom: CGFloat = 1
     @Published var pan: CGSize = .zero
-    @Published private(set) var isGenerating = false
+    /// Ediciones en marcha de la imagen abierta ahora (las de otras imágenes siguen por detrás).
+    @Published private(set) var runningCount = 0
+    var isGenerating: Bool { runningCount > 0 }
     @Published private(set) var statusText = ""
     @Published var loadError: String?
 
@@ -74,7 +76,11 @@ final class PreciseEditModel: ObservableObject {
     /// para que no vaya dando saltos detrás del puntero.
     @Published var isDraggingBox = false
 
-    private var generationTask: Task<Void, Never>?
+    /// Identifica la imagen abierta: cambia al abrir otra o al empezar de nuevo. Las ediciones
+    /// lanzadas antes siguen en marcha y guardan su resultado en la tira y el Historial,
+    /// pero ya no tocan las versiones ni el estado de la imagen nueva.
+    private var session = UUID()
+    private var generationTasks: [UUID: (session: UUID, task: Task<Void, Never>)] = [:]
 
     var current: EditVersion? {
         versions.indices.contains(currentIndex) ? versions[currentIndex] : nil
@@ -101,7 +107,8 @@ final class PreciseEditModel: ObservableObject {
     }
 
     func reset() {
-        generationTask?.cancel()
+        // No se cancela nada: lo que esté en marcha termina por detrás.
+        session = UUID()
         versions = []
         currentIndex = 0
         regions = []
@@ -112,7 +119,7 @@ final class PreciseEditModel: ObservableObject {
         compareMode = false
         zoom = 1
         pan = .zero
-        isGenerating = false
+        runningCount = 0
         statusText = ""
     }
 
@@ -133,7 +140,7 @@ final class PreciseEditModel: ObservableObject {
         guard let url else { return }
         if let index = versions.firstIndex(where: { $0.fileURL == url }) {
             if index != currentIndex { goToVersion(index) }
-        } else if !isGenerating {
+        } else {
             load(url)
         }
     }
@@ -305,7 +312,7 @@ final class PreciseEditModel: ObservableObject {
     // MARK: - Generar
 
     func generate(using state: AppState) {
-        guard let version = current, !isGenerating else { return }
+        guard let version = current else { return }
         guard hasSomethingToDo else {
             state.alert = AppAlert(title: "Nada que editar", message: "Escribe qué debe cambiar en alguna región o un cambio para toda la imagen.")
             return
@@ -332,11 +339,19 @@ final class PreciseEditModel: ObservableObject {
         let sourceURL = version.fileURL
         let res = resolution, st = safety, gr = grounding
         let requestID = UUID()
+        let mySession = session
 
-        isGenerating = true
+        runningCount += 1
         statusText = "Preparando imagen"
-        generationTask = Task { [weak self] in
+        let task = Task { [weak self] in
             guard let self else { return }
+            defer {
+                self.generationTasks[requestID] = nil
+                if self.session == mySession {
+                    self.runningCount = max(0, self.runningCount - 1)
+                    if self.runningCount == 0 { self.statusText = "" }
+                }
+            }
             do {
                 let base = try await Task.detached(priority: .userInitiated) {
                     try ImageEncoder.encode(fileURL: sourceURL)
@@ -346,7 +361,7 @@ final class PreciseEditModel: ObservableObject {
                     aspectRatio: "auto", resolution: res, safetyTolerance: st, grounding: gr
                 )
                 let parameters = (try? JSONValue(encoding: body))?.strippingLargeStrings() ?? .null
-                statusText = "Enviando"
+                if session == mySession { statusText = "Enviando" }
 
                 var failures: [String] = []
                 await withTaskGroup(of: Result<AppState.JobOutput, Error>.self) { group in
@@ -360,7 +375,8 @@ final class PreciseEditModel: ObservableObject {
                                     referenceCount: regionRefs.count + extraRefs.count,
                                     source: sourceURL, group: requestID
                                 ) { [weak self] phase, _, _ in
-                                    self?.statusText = Self.describe(phase)
+                                    guard let self, self.session == mySession else { return }
+                                    self.statusText = Self.describe(phase)
                                 })
                             } catch {
                                 return .failure(error)
@@ -370,6 +386,8 @@ final class PreciseEditModel: ObservableObject {
                     for await result in group {
                         switch result {
                         case .success(let output):
+                            // Si mientras tanto se ha abierto otra imagen, el resultado solo va a la tira.
+                            guard self.session == mySession else { break }
                             // Solo pasa a la versión nueva si el Estudio la ha seleccionado (selección estable).
                             self.appendVersion(from: output, parent: parentIndex,
                                                select: state.focusedURL == output.stored.fileURL)
@@ -385,14 +403,15 @@ final class PreciseEditModel: ObservableObject {
             } catch {
                 state.alert = AppAlert(title: "No se ha podido editar", message: error.localizedDescription)
             }
-            self.isGenerating = false
-            self.statusText = ""
-            self.generationTask = nil
         }
+        generationTasks[requestID] = (mySession, task)
     }
 
+    /// Cancela las ediciones de la imagen abierta (las de otras imágenes siguen).
     func cancelGeneration() {
-        generationTask?.cancel()
+        for (_, entry) in generationTasks where entry.session == session {
+            entry.task.cancel()
+        }
     }
 
     private func appendVersion(from output: AppState.JobOutput, parent: Int, select: Bool) {

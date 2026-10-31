@@ -25,7 +25,8 @@ struct ToolGenerateControls: View {
         HStack(spacing: 10) {
             if runner.isRunning {
                 ProgressView().controlSize(.small)
-                Text(runner.status).font(.system(size: 12)).foregroundStyle(Theme.textSecondary)
+                Text(runner.runningCount > 1 ? "\(runner.runningCount) en marcha" : runner.status)
+                    .font(.system(size: 12)).foregroundStyle(Theme.textSecondary)
                 Button("Cancelar") { runner.cancel() }
                     .buttonStyle(.plain)
                     .font(.system(size: 12, weight: .medium))
@@ -36,11 +37,11 @@ struct ToolGenerateControls: View {
                     .font(.system(size: 15, weight: .bold))
                     .foregroundStyle(.white)
                     .frame(width: 36, height: 36)
-                    .background(Circle().fill(Theme.action.opacity(enabled && !runner.isRunning ? 1 : 0.3)))
+                    .background(Circle().fill(Theme.action.opacity(enabled ? 1 : 0.3)))
             }
             .buttonStyle(.plain)
             .keyboardShortcut(.return, modifiers: .command)
-            .disabled(!enabled || runner.isRunning)
+            .disabled(!enabled) // se puede lanzar otra aunque haya alguna en marcha
             .help("Generar (⌘↩)")
         }
     }

@@ -45,12 +45,14 @@ struct ToolResult: Identifiable {
 /// Ejecuta una petición de herramienta y guarda sus resultados.
 @MainActor
 final class ToolRunner: ObservableObject {
-    @Published private(set) var isRunning = false
+    /// Peticiones en marcha. Se pueden lanzar varias seguidas sin esperar.
+    @Published private(set) var runningCount = 0
+    var isRunning: Bool { runningCount > 0 }
     @Published private(set) var status = ""
     @Published var results: [ToolResult] = []
     @Published var selectedID: UUID?
 
-    private var task: Task<Void, Never>?
+    private var tasks: [UUID: Task<Void, Never>] = [:]
 
     var current: ToolResult? {
         results.first { $0.id == selectedID } ?? results.last
@@ -70,7 +72,6 @@ final class ToolRunner: ObservableObject {
         referenceCount: Int = 0, source: URL? = nil,
         prepare: @escaping @MainActor () async throws -> Body
     ) {
-        guard !isRunning else { return }
         let client: BFLClient
         do {
             client = try state.settings.makeClient()
@@ -78,9 +79,15 @@ final class ToolRunner: ObservableObject {
             state.alert = AppAlert(title: "Falta la API key", message: error.localizedDescription, opensSettings: true)
             return
         }
-        isRunning = true
+        runningCount += 1
         status = "Preparando imagen"
-        task = Task { [weak self] in
+        let id = UUID()
+        tasks[id] = Task { [weak self] in
+            defer {
+                self?.tasks[id] = nil
+                self?.runningCount -= 1
+                if self?.runningCount == 0 { self?.status = "" }
+            }
             do {
                 let body = try await prepare()
                 try Task.checkCancellation()
@@ -103,18 +110,15 @@ final class ToolRunner: ObservableObject {
             } catch {
                 state.alert = AppAlert(title: "No se ha podido completar", message: error.localizedDescription)
             }
-            self?.isRunning = false
-            self?.status = ""
-            self?.task = nil
         }
     }
 
     func cancel() {
-        task?.cancel()
+        tasks.values.forEach { $0.cancel() }
     }
 
+    /// Olvida los resultados mostrados; lo que esté en marcha sigue y se guarda en la tira.
     func clear() {
-        cancel()
         results = []
         selectedID = nil
     }
