@@ -23,15 +23,25 @@ struct CollageLayer: Identifiable, Equatable {
     var isVisible = true
     /// Se le ha quitado el fondo.
     var isCutOut = false
+    /// Recorte automático sin retocar (de «Quitar fondo»), para poder ajustar el borde después.
+    private(set) var autoMask: CGImage?
+    /// Ajustes del borde del recorte automático (en píxeles de la imagen de la capa).
+    private(set) var maskEdge: Double = 0
+    private(set) var maskFeather: Double = 1
     /// Cambian cuando cambia la imagen o la máscara (nombres de archivo al guardar).
     private(set) var originalToken = CollageLayer.newToken()
     private(set) var maskToken = CollageLayer.newToken()
+    private(set) var autoMaskToken = CollageLayer.newToken()
 
     static func newToken() -> String { String(UUID().uuidString.prefix(8)).lowercased() }
 
     init(id: UUID = UUID(), sourceURL: URL, original: CGImage, mask: CGImage? = nil, quad: CollageQuad,
-         opacity: Double = 1, isVisible: Bool = true, isCutOut: Bool = false) {
+         opacity: Double = 1, isVisible: Bool = true, isCutOut: Bool = false,
+         autoMask: CGImage? = nil, maskEdge: Double = 0, maskFeather: Double = 1) {
         self.id = id
+        self.autoMask = autoMask
+        self.maskEdge = maskEdge
+        self.maskFeather = maskFeather
         self.sourceURL = sourceURL
         self.original = original
         self.mask = mask
@@ -57,7 +67,36 @@ struct CollageLayer: Identifiable, Equatable {
     mutating func setOriginal(_ newOriginal: CGImage) {
         original = newOriginal
         originalToken = Self.newToken()
+        autoMask = nil
+        isCutOut = false
         setMask(nil)
+    }
+
+    /// Recorte automático: guarda la máscara sin retocar y aplica la ajustada.
+    mutating func setAutoMask(_ raw: CGImage?, edge: Double, feather: Double, effective: CGImage?) {
+        if raw !== autoMask { autoMaskToken = Self.newToken() }
+        autoMask = raw
+        maskEdge = edge
+        maskFeather = feather
+        isCutOut = raw != nil
+        setMask(effective)
+    }
+
+    /// Recorta la imagen (y sus máscaras) a un rectángulo en píxeles, sin moverla en el lienzo.
+    mutating func crop(to rect: CGRect) {
+        guard let cropped = original.cropping(to: rect) else { return }
+        let w = CGFloat(original.width), h = CGFloat(original.height)
+        let hm = quad.homography
+        quad = CollageQuad(corners: [
+            hm.apply(u: rect.minX / w, v: rect.minY / h), hm.apply(u: rect.maxX / w, v: rect.minY / h),
+            hm.apply(u: rect.maxX / w, v: rect.maxY / h), hm.apply(u: rect.minX / w, v: rect.maxY / h),
+        ])
+        let newMask = mask?.cropping(to: rect)
+        autoMask = autoMask?.cropping(to: rect)
+        autoMaskToken = Self.newToken()
+        original = cropped
+        originalToken = Self.newToken()
+        setMask(newMask)
     }
 
     /// Solo la imagen mostrada, sin tocar la máscara (vista previa mientras se pinta).
@@ -240,7 +279,8 @@ final class CollageModel: ObservableObject {
         let layer = layers[index]
         let copy = CollageLayer(sourceURL: layer.sourceURL, original: layer.original, mask: layer.mask,
                                 quad: layer.quad.translated(by: CGVector(dx: canvasSize.width * 0.03, dy: canvasSize.width * 0.03)),
-                                opacity: layer.opacity, isVisible: true, isCutOut: layer.isCutOut)
+                                opacity: layer.opacity, isVisible: true, isCutOut: layer.isCutOut,
+                                autoMask: layer.autoMask, maskEdge: layer.maskEdge, maskFeather: layer.maskFeather)
         layers.insert(copy, at: index + 1)
         selectedID = copy.id
     }
@@ -273,51 +313,135 @@ final class CollageModel: ObservableObject {
 
     // MARK: Quitar fondo
 
-    /// Recorta el objeto principal con el recorte de sujetos de macOS (Vision), sin gastar créditos.
+    /// Detecta el objeto principal con el recorte de sujetos de macOS (Vision), sin gastar créditos.
+    /// No destruye nada: el fondo se oculta con una máscara, así se puede ajustar el borde,
+    /// recuperar con el pincel lo que sobraba o quitar el recorte.
     func removeBackground(_ id: UUID, state: AppState) {
         guard let layer = layers.first(where: { $0.id == id }), !cuttingOut.contains(id) else { return }
         cuttingOut.insert(id)
-        let source = layer.cgImage
+        let source = layer.original
+        let edge = layer.maskEdge, feather = layer.maskFeather
         Task {
-            let cut = await Task.detached(priority: .userInitiated) { Self.cutOut(source) }.value
+            let result = await Task.detached(priority: .userInitiated) { () -> (CGImage, CGImage?)? in
+                guard let raw = Self.subjectMask(source) else { return nil }
+                return (raw, Self.adjustMask(raw, edge: edge, feather: feather))
+            }.value
             cuttingOut.remove(id)
-            guard let cut else {
+            guard let (raw, effective) = result else {
                 state.alert = AppAlert(
                     title: "No se ha podido quitar el fondo",
-                    message: "No se ha encontrado un objeto claro en «\(layer.name)». Funciona mejor con un objeto bien definido sobre un fondo distinto."
+                    message: "No se ha encontrado un objeto claro en «\(layer.name)». Funciona mejor con un objeto bien definido sobre un fondo distinto. Puedes borrar el fondo a mano con la Goma (E)."
                 )
                 return
             }
-            guard let current = layers.first(where: { $0.id == id }) else { return }
-            // Mantiene la escala en pantalla: mismos píxeles de pantalla por píxel de imagen.
-            let scale = current.quad.approximateSize.width / CGFloat(max(current.cgImage.width, 1))
-            let rect = Self.uprightRect(for: cut, width: CGFloat(cut.width) * scale,
-                                        center: current.quad.center)
-            edit(id) {
-                $0.setOriginal(cut)
-                $0.quad = CollageQuad(rect: rect)
-                $0.isCutOut = true
-            }
+            edit(id) { $0.setAutoMask(raw, edge: edge, feather: feather, effective: effective) }
         }
     }
 
-    nonisolated private static func cutOut(_ image: CGImage) -> CGImage? {
+    /// Ajusta el borde del recorte automático: `edge` > 0 agranda, < 0 encoge; `feather` lo suaviza.
+    /// Rehace la máscara desde el recorte automático (los retoques con la goma se pierden).
+    func adjustCutout(_ id: UUID, edge: Double, feather: Double) {
+        guard let layer = layers.first(where: { $0.id == id }), let raw = layer.autoMask else { return }
+        let effective = Self.adjustMask(raw, edge: edge, feather: feather)
+        edit(id) { $0.setAutoMask(raw, edge: edge, feather: feather, effective: effective) }
+    }
+
+    /// Quita el recorte y la goma: vuelve a verse la foto entera de la capa.
+    func removeCutout(_ id: UUID) {
+        edit(id) { $0.setAutoMask(nil, edge: 0, feather: 1, effective: nil) }
+    }
+
+    /// Vuelve a cargar la foto original del archivo (para capas recortadas con versiones anteriores).
+    func restoreOriginalPhoto(_ id: UUID, state: AppState) {
+        guard let layer = layers.first(where: { $0.id == id }),
+              let cg = ImageEncoder.thumbnail(fileURL: layer.sourceURL, maxPixelSize: Self.maxLayerSide) else {
+            state.alert = AppAlert(title: "No se encuentra la foto original",
+                                   message: "El archivo de «\(layer.name)» ya no está donde estaba.")
+            return
+        }
+        // Misma escala en pantalla y mismo centro.
+        let scale = layer.quad.approximateSize.width / CGFloat(max(layer.original.width, 1))
+        let rect = Self.uprightRect(for: cg, width: CGFloat(cg.width) * scale, center: layer.quad.center)
+        edit(id) {
+            $0.setOriginal(cg)
+            $0.quad = CollageQuad(rect: rect)
+        }
+    }
+
+    /// Ajusta la caja de la capa a lo que se ve (con un pequeño margen), sin moverla.
+    func fitBoxToContent(_ id: UUID) {
+        guard let layer = layers.first(where: { $0.id == id }), let mask = layer.mask,
+              let bounds = Self.visibleBounds(mask) else { return }
+        let w = CGFloat(mask.width), h = CGFloat(mask.height)
+        let margin = max(w, h) * 0.02
+        let rect = bounds.insetBy(dx: -margin, dy: -margin)
+            .intersection(CGRect(x: 0, y: 0, width: w, height: h)).integral
+        guard rect.width >= 4, rect.height >= 4, rect.size != CGSize(width: w, height: h) else { return }
+        edit(id) { $0.crop(to: rect) }
+    }
+
+    /// Máscara del sujeto al tamaño de la imagen (gris: blanco = objeto).
+    nonisolated static func subjectMask(_ image: CGImage) -> CGImage? {
         let request = VNGenerateForegroundInstanceMaskRequest()
         let handler = VNImageRequestHandler(cgImage: image)
         do {
             try handler.perform([request])
             guard let observation = request.results?.first, !observation.allInstances.isEmpty else { return nil }
-            let buffer = try observation.generateMaskedImage(
-                ofInstances: observation.allInstances, from: handler, croppedToInstancesExtent: true
-            )
-            let ci = CIImage(cvPixelBuffer: buffer)
-            let context = CIContext()
-            guard let cg = context.createCGImage(ci, from: ci.extent, format: .RGBA8,
-                                                 colorSpace: CGColorSpace(name: CGColorSpace.sRGB)) else { return nil }
-            return cg
+            let buffer = try observation.generateScaledMaskForImage(forInstances: observation.allInstances, from: handler)
+            var ci = CIImage(cvPixelBuffer: buffer)
+            // Por si la máscara no sale exactamente al tamaño de la imagen.
+            let sx = CGFloat(image.width) / ci.extent.width, sy = CGFloat(image.height) / ci.extent.height
+            if abs(sx - 1) > 0.001 || abs(sy - 1) > 0.001 {
+                ci = ci.transformed(by: CGAffineTransform(scaleX: sx, y: sy))
+            }
+            let extent = CGRect(x: 0, y: 0, width: image.width, height: image.height)
+            return CIContext().createCGImage(ci.cropped(to: extent), from: extent, format: .L8,
+                                             colorSpace: CGColorSpaceCreateDeviceGray())
         } catch {
             return nil
         }
+    }
+
+    /// Agranda o encoge el borde (en píxeles) y lo suaviza.
+    nonisolated static func adjustMask(_ raw: CGImage, edge: Double, feather: Double) -> CGImage? {
+        var ci = CIImage(cgImage: raw)
+        let extent = ci.extent
+        if edge > 0.4 {
+            ci = ci.applyingFilter("CIMorphologyMaximum", parameters: [kCIInputRadiusKey: edge])
+        } else if edge < -0.4 {
+            ci = ci.applyingFilter("CIMorphologyMinimum", parameters: [kCIInputRadiusKey: -edge])
+        }
+        if feather > 0.3 {
+            ci = ci.clampedToExtent().applyingGaussianBlur(sigma: feather)
+        }
+        return CIContext().createCGImage(ci.cropped(to: extent), from: extent, format: .L8,
+                                         colorSpace: CGColorSpaceCreateDeviceGray())
+    }
+
+    /// Rectángulo (en píxeles, con el origen arriba) de lo que se ve en una máscara.
+    nonisolated static func visibleBounds(_ mask: CGImage) -> CGRect? {
+        let w = mask.width, h = mask.height
+        var bytes = [UInt8](repeating: 0, count: w * h)
+        let ok = bytes.withUnsafeMutableBytes { buffer -> Bool in
+            guard let ctx = CGContext(data: buffer.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w,
+                                      space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue) else { return false }
+            ctx.draw(mask, in: CGRect(x: 0, y: 0, width: w, height: h))
+            return true
+        }
+        guard ok else { return nil }
+        var minX = w, minY = h, maxX = -1, maxY = -1
+        for y in 0..<h {
+            let row = y * w
+            for x in 0..<w where bytes[row + x] > 16 {
+                if x < minX { minX = x }
+                if x > maxX { maxX = x }
+                if y < minY { minY = y }
+                if y > maxY { maxY = y }
+            }
+        }
+        guard maxX >= minX, maxY >= minY else { return nil }
+        // El búfer de un contexto de mapa de bits empieza por la fila de arriba.
+        return CGRect(x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1)
     }
 
     // MARK: Deshacer
@@ -586,9 +710,16 @@ extension CollageModel {
                 images.append((name, mask))
                 maskName = name
             }
+            var autoName: String?
+            if let auto = layer.autoMask {
+                let name = "auto-\(layer.id.uuidString.prefix(8))-\(layer.autoMaskToken).png"
+                images.append((name, auto))
+                autoName = name
+            }
             fileLayers.append(.init(id: layer.id, source: layer.sourceURL.path, imageFile: imageName, maskFile: maskName,
                                     corners: layer.quad.cornerArrays, opacity: layer.opacity,
-                                    visible: layer.isVisible, cutOut: layer.isCutOut))
+                                    visible: layer.isVisible, cutOut: layer.isCutOut,
+                                    autoMaskFile: autoName, maskEdge: layer.maskEdge, maskFeather: layer.maskFeather))
         }
         var file = CollageProjectFile(
             name: projectName, created: projectCreated, modified: Date(), baseFile: baseName,
@@ -694,9 +825,11 @@ extension CollageModel {
             guard let image = Self.loadImage(folder.appendingPathComponent(item.imageFile)),
                   let quad = item.quad else { missing += 1; continue }
             let mask = item.maskFile.flatMap { Self.loadImage(folder.appendingPathComponent($0), gray: true) }
+            let auto = item.autoMaskFile.flatMap { Self.loadImage(folder.appendingPathComponent($0), gray: true) }
             loaded.append(CollageLayer(id: item.id, sourceURL: URL(fileURLWithPath: item.source), original: image,
                                        mask: mask, quad: quad, opacity: item.opacity,
-                                       isVisible: item.visible, isCutOut: item.cutOut))
+                                       isVisible: item.visible, isCutOut: item.cutOut,
+                                       autoMask: auto, maskEdge: item.maskEdge ?? 0, maskFeather: item.maskFeather ?? 1))
         }
         let baseURL = file.baseSource.map { URL(fileURLWithPath: $0) } ?? folder.appendingPathComponent(file.baseFile)
         base = CollageBase(url: baseURL, cgImage: baseImage, image: NSImage(cgImage: baseImage, size: .zero))

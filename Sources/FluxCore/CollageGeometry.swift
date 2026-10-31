@@ -219,9 +219,17 @@ public struct CollageProjectFile: Codable, Equatable, Sendable {
         public var opacity: Double
         public var visible: Bool
         public var cutOut: Bool
+        /// Recorte automático sin retocar y ajustes de su borde (opcionales: versiones anteriores no los tienen).
+        public var autoMaskFile: String?
+        public var maskEdge: Double?
+        public var maskFeather: Double?
 
         public init(id: UUID, source: String, imageFile: String, maskFile: String?, corners: [[Double]],
-                    opacity: Double, visible: Bool, cutOut: Bool) {
+                    opacity: Double, visible: Bool, cutOut: Bool,
+                    autoMaskFile: String? = nil, maskEdge: Double? = nil, maskFeather: Double? = nil) {
+            self.autoMaskFile = autoMaskFile
+            self.maskEdge = maskEdge
+            self.maskFeather = maskFeather
             self.id = id
             self.source = source
             self.imageFile = imageFile

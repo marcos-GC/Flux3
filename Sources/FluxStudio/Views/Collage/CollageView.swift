@@ -515,18 +515,8 @@ private struct CollageLayersPanel: View {
         VStack(alignment: .leading, spacing: 8) {
             brushControls(layer)
 
-            Button { model.removeBackground(layer.id, state: state) } label: {
-                Label(model.cuttingOut.contains(layer.id) ? "Quitando fondo…" : (layer.isCutOut ? "Fondo quitado" : "Quitar fondo"),
-                      systemImage: "wand.and.rays")
-                    .font(.system(size: 12, weight: .medium))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 6)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Theme.region.opacity(layer.isCutOut ? 0.06 : 0.14)))
-                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.region.opacity(0.5)))
-            }
-            .buttonStyle(.plain)
-            .disabled(model.cuttingOut.contains(layer.id) || layer.isCutOut)
-            .help("Recorta el objeto principal con el recorte de sujetos de macOS (gratis, sin internet). ⌘Z lo deshace.")
+            CutoutControls(model: model, layer: layer)
+                .id(layer.id)
 
             HStack(spacing: 6) {
                 Text("Opacidad").font(.system(size: 11)).foregroundStyle(Theme.textSecondary)
@@ -853,5 +843,84 @@ private struct RecentCollageCard: View {
             let url = project.preview
             thumbnail = await Task.detached { NSImage(contentsOf: url) }.value
         }
+    }
+}
+
+/// «Quitar fondo» y su control: borde, suavizado, quitar el recorte y ajustar la caja.
+private struct CutoutControls: View {
+    @EnvironmentObject private var state: AppState
+    @ObservedObject var model: CollageModel
+    let layer: CollageLayer
+    @State private var edge: Double = 0
+    @State private var feather: Double = 1
+
+    private var busy: Bool { model.cuttingOut.contains(layer.id) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if layer.autoMask == nil {
+                Button { model.removeBackground(layer.id, state: state) } label: {
+                    Label(busy ? "Quitando fondo…" : "Quitar fondo", systemImage: "wand.and.rays")
+                        .font(.system(size: 12, weight: .medium))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Theme.region.opacity(0.14)))
+                        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.region.opacity(0.5)))
+                }
+                .buttonStyle(.plain)
+                .disabled(busy)
+                .help("Detecta el objeto con el recorte de sujetos de macOS (gratis, sin internet). No borra nada: después puedes ajustar el borde, recuperar partes con el pincel o quitar el recorte.")
+                if layer.isCutOut {
+                    // Capas recortadas con la versión anterior (la foto se sustituyó por el recorte).
+                    Button("Volver a la foto original") { model.restoreOriginalPhoto(layer.id, state: state) }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Theme.region)
+                }
+            } else {
+                HStack {
+                    SectionLabel("Recorte")
+                    Spacer()
+                    Button("Quitar recorte") { model.removeCutout(layer.id) }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Theme.danger)
+                        .help("Vuelve a verse la foto entera (también lo borrado con la goma). ⌘Z lo deshace.")
+                }
+                slider("Borde", value: $edge, range: -20...20, hint: "Encoger (−) o agrandar (+) el recorte: + recupera lo que se ha comido, − quita restos de fondo.")
+                slider("Suavizar", value: $feather, range: 0...10, hint: "Difumina el borde para que se integre mejor.")
+                HStack(spacing: 10) {
+                    Button("Ajustar caja al objeto") { model.fitBoxToContent(layer.id) }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Theme.region)
+                        .help("Recorta la caja de la capa a lo que se ve, para moverla y escalarla más cómodamente.")
+                }
+                Text("Para retocar zonas concretas, usa Goma (E) o Recuperar (R). Si después mueves Borde o Suavizar, esos retoques se pierden.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(Theme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .onAppear { edge = layer.maskEdge; feather = layer.maskFeather }
+        .onChange(of: layer.maskEdge) { edge = layer.maskEdge }
+        .onChange(of: layer.maskFeather) { feather = layer.maskFeather }
+    }
+
+    private func slider(_ title: String, value: Binding<Double>, range: ClosedRange<Double>, hint: String) -> some View {
+        HStack(spacing: 6) {
+            Text(title).font(.system(size: 11)).foregroundStyle(Theme.textSecondary)
+                .frame(width: 52, alignment: .leading)
+            // Se aplica al soltar, para que vaya fluido.
+            Slider(value: value, in: range, onEditingChanged: { editing in
+                if !editing { model.adjustCutout(layer.id, edge: edge, feather: feather) }
+            })
+            .controlSize(.mini)
+            Text(String(format: "%+.0f", value.wrappedValue))
+                .font(.system(size: 10)).monospacedDigit()
+                .foregroundStyle(Theme.textSecondary)
+                .frame(width: 24, alignment: .trailing)
+        }
+        .help(hint)
     }
 }
