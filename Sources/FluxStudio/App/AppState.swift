@@ -11,7 +11,7 @@ struct AppAlert: Identifiable {
 
 /// Herramientas del Estudio: todas trabajan sobre la imagen seleccionada.
 enum WorkspaceTool: String, CaseIterable, Identifiable {
-    case generate, edit, erase, outpaint, deblur, tryOn, video
+    case generate, edit, collage, erase, outpaint, deblur, tryOn, video
 
     var id: String { rawValue }
 
@@ -19,6 +19,7 @@ enum WorkspaceTool: String, CaseIterable, Identifiable {
         switch self {
         case .generate: return "Generar"
         case .edit: return "Editar"
+        case .collage: return "Collage"
         case .erase: return "Borrar"
         case .outpaint: return "Ampliar"
         case .deblur: return "Deblur"
@@ -31,6 +32,7 @@ enum WorkspaceTool: String, CaseIterable, Identifiable {
         switch self {
         case .generate: return "sparkles"
         case .edit: return "selection.pin.in.out"
+        case .collage: return "square.3.layers.3d"
         case .erase: return "eraser"
         case .outpaint: return "arrow.up.left.and.arrow.down.right"
         case .deblur: return "camera.aperture"
@@ -43,6 +45,7 @@ enum WorkspaceTool: String, CaseIterable, Identifiable {
         switch self {
         case .generate: return "Generar imágenes nuevas con FLUX 3 Image"
         case .edit: return "Editar: describe un cambio o dibuja regiones con instrucciones"
+        case .collage: return "Collage: coloca objetos sobre una foto y conviértelo en una foto realista"
         case .erase: return "Borrar objetos pintando encima"
         case .outpaint: return "Ampliar: extender la imagen más allá de sus bordes"
         case .deblur: return "Quitar el desenfoque"
@@ -52,7 +55,7 @@ enum WorkspaceTool: String, CaseIterable, Identifiable {
     }
 
     /// Las herramientas de edición necesitan una imagen seleccionada (no un vídeo).
-    var needsImage: Bool { self != .generate && self != .video }
+    var needsImage: Bool { self != .generate && self != .video && self != .collage }
 }
 
 /// Qué hacer con la imagen seleccionada al pulsar generar.
@@ -124,6 +127,7 @@ final class AppState: ObservableObject {
     let deblur: DeblurModel
     let tryOn: TryOnModel
     let video: VideoModel
+    let collage: CollageModel
     private var tasks: [UUID: [Task<Void, Never>]] = [:]
     /// Petición a la que pertenece cada resultado (las variantes de una misma petición).
     private var resultGroups: [URL: UUID] = [:]
@@ -137,6 +141,7 @@ final class AppState: ObservableObject {
         self.deblur = DeblurModel(settings: settings)
         self.tryOn = TryOnModel(settings: settings)
         self.video = VideoModel(settings: settings)
+        self.collage = CollageModel(settings: settings)
         imageParams.count = settings.defaultImageCount
         imageParams.safety = SafetyTolerance.clamp(settings.defaultSafety, for: .flux3Image)
     }
@@ -482,7 +487,18 @@ final class AppState: ObservableObject {
                 if video.keyframes.isEmpty { video.addKeyframes([url]) }
             }
         }
+        // El collage empieza con la imagen seleccionada como base.
+        if newTool == .collage, collage.base == nil, let url = focusedURL, !VideoModel.isVideo(url) {
+            collage.setBase(url)
+        }
         tool = newTool
+        mode = .generate
+    }
+
+    /// «Añadir al collage»: base si aún no hay, o una capa más.
+    func addToCollage(_ url: URL) {
+        if collage.base == nil { collage.setBase(url) } else { collage.add([url]) }
+        tool = .collage
         mode = .generate
     }
 

@@ -79,6 +79,16 @@ Al arrastrar una imagen sobre la pantalla aparecen dos zonas:
 
 **Tolerancia de seguridad:** controla lo estricta que es la moderación de BFL (0 = muy estricto). No cambia el estilo. Va de 0 a 4 en FLUX 3 Image y Vídeo, y de 0 a 5 en Borrar, Ampliar, Deblur y Probador.
 
+### Collage (montaje + «Hacer realista»)
+
+Una capa propia de la app, por encima de FLUX: un pequeño Photoshop para montar escenas y que FLUX las convierta en una foto realista.
+
+1. **Base:** elige una foto (por ejemplo, la librería del salón). Si tenías una imagen seleccionada, se usa como base al abrir Collage.
+2. **Objetos:** añádelos con **Añadir objetos**, arrastrándolos desde el Finder o la tira, con **⌘V** o con clic derecho → «Añadir al collage». Sirven PNG recortados o fotos normales: **Quitar fondo** recorta el objeto con el recorte de sujetos de macOS (gratis, sin internet).
+3. **Transformar:** arrastra para mover (⇧ = recto) · **esquinas** = escalar sin deformar · **⌘ + esquina** = perspectiva · **lados** = más ancho, estrecho, alto o bajo · **círculo de arriba** = girar (⇧ = de 15 en 15°) · flechas = mover un poco.
+4. **Capas:** panel a la derecha (arriba = delante): ocultar, opacidad, voltear, delante/detrás, duplicar (⌘D), quitar transformaciones y borrar (⌫). **⌘Z / ⇧⌘Z** deshacen y rehacen.
+5. **Hacer realista** (⌘↩): junta el collage (se guarda en «Collages», dentro de la carpeta de salida) y lo envía a FLUX 3 Image con instrucciones para mantener la composición e integrar luz, sombras y bordes. Con **Enviar fotos originales**, también van las fotos de cada objeto (hasta 9) para que respete mejor cómo son. Puedes añadir indicaciones propias y usar **Mejorar**. El resultado aparece en la tira con **Antes / Después** frente al collage.
+
 ### Mejorar prompts con Claude (opcional)
 
 En la caja de **Generar** y de **Vídeo** hay un botón **Mejorar** (⌘E). Envía tu idea a **Claude Haiku 5.5**, que la reescribe en inglés siguiendo las guías oficiales de prompting de FLUX 3 sin cambiar lo que pediste. Debajo explica en español qué ha cambiado, y con **↶** vuelves a tu texto.

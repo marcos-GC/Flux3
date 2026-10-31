@@ -15,6 +15,9 @@ struct ResultActions: View {
         if !VideoModel.isVideo(fileURL) {
             Button("Editar esta imagen") { state.send(fileURL, to: .preciseEdit) }
             Button("Usar como referencia") { state.useAsReference(fileURL) }
+            Button(state.collage.base == nil ? "Usar como base de un collage" : "Añadir al collage") {
+                state.addToCollage(fileURL)
+            }
             if let focused = state.focusedURL, focused != fileURL, !VideoModel.isVideo(focused) {
                 Button("Comparar con la imagen en grande") { state.compare(with: fileURL) }
             }

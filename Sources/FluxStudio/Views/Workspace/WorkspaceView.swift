@@ -20,7 +20,9 @@ struct WorkspaceView: View {
     var body: some View {
         HStack(spacing: 0) {
             ZStack {
-                if state.tool == .edit && state.focusedURL != nil && state.compareURL == nil {
+                if state.tool == .collage && state.compareURL == nil {
+                    CollageWorkspace(model: state.collage)
+                } else if state.tool == .edit && state.focusedURL != nil && state.compareURL == nil {
                     editLayout
                 } else {
                     standardLayout
@@ -38,7 +40,7 @@ struct WorkspaceView: View {
             .animation(.easeOut(duration: 0.2), value: state.readyNotice)
             // Al arrastrar imágenes desde el Finder: zona izquierda = editar, derecha = referencia.
             .overlay {
-                if let dropZone {
+                if let dropZone, state.tool != .collage {
                     StudioDropOverlay(active: dropZone)
                         .allowsHitTesting(false)
                 }
@@ -202,11 +204,23 @@ struct WorkspaceView: View {
             VideoBar(model: state.video)
         case .edit:
             if state.compareURL != nil { CompareHintBar() } else { NeedsImageBar() }
+        case .collage:
+            CompareHintBar()
         }
     }
 
     /// Imágenes soltadas desde el Finder.
     private func handleDrop(_ urls: [URL], zone: StudioDropZone) {
+        // En el collage, lo que se suelta se añade como objeto (o como base si aún no hay).
+        if state.tool == .collage && state.compareURL == nil {
+            let images = urls.filter(ReferenceImage.isSupported)
+            if images.isEmpty {
+                state.alert = AppAlert(title: "Archivo no compatible", message: "Solo se pueden usar imágenes (JPEG, PNG, WebP, HEIC…).")
+            } else {
+                state.collage.add(images)
+            }
+            return
+        }
         state.receive(urls, as: zone)
     }
 
@@ -219,7 +233,7 @@ struct WorkspaceView: View {
         case .outpaint: state.outpaint.sync(with: url)
         case .deblur: state.deblur.sync(with: url)
         case .tryOn: state.tryOn.sync(with: url)
-        case .generate, .video: break
+        case .generate, .video, .collage: break
         }
     }
 }
@@ -236,7 +250,10 @@ private struct ReadyToast: View {
             Text("Listo: \(ToolNames.display(notice.label))")
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(Theme.textPrimary)
-            Button("Ver") { state.focusedURL = notice.url }
+            Button("Ver") {
+                if state.tool == .collage { state.selectTool(.generate) }
+                state.focusedURL = notice.url
+            }
                 .buttonStyle(.plain)
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(Theme.textPrimary)

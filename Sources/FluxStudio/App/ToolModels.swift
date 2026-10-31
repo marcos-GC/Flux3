@@ -70,6 +70,7 @@ final class ToolRunner: ObservableObject {
     func run<Body: Encodable & Sendable>(
         state: AppState, endpoint: BFLEndpoint, modelName: String, prompt: String,
         referenceCount: Int = 0, source: URL? = nil,
+        onDone: (@MainActor (URL) -> Void)? = nil,
         prepare: @escaping @MainActor () async throws -> Body
     ) {
         let client: BFLClient
@@ -105,6 +106,7 @@ final class ToolRunner: ObservableObject {
                     self?.results.append(result)
                     self?.selectedID = result.id
                 }
+                onDone?(output.stored.fileURL)
             } catch is CancellationError {
             } catch let error as URLError where error.code == .cancelled {
             } catch {

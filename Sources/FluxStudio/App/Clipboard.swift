@@ -102,6 +102,11 @@ enum Clipboard {
             guard hasImage else { return false }
             let urls = imageURLs(saveFolder: state.settings.outputFolder)
             guard !urls.isEmpty else { return false }
+            // En el collage, lo pegado se añade directamente como objeto.
+            if state.tool == .collage && state.mode == .generate && state.compareURL == nil {
+                state.collage.add(urls)
+                return true
+            }
             state.pendingPaste = urls
             return true
         default:
