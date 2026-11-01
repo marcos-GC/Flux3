@@ -166,10 +166,14 @@ Si una clave queda expuesta (por ejemplo, en una captura), bórrala en dashboard
 - `./build_app.sh` monta `FLUX Studio.app` en `~/Applications`; `./make_dmg.sh` crea `dist/FLUX-Studio.dmg`.
 - GitHub Actions (`.github/workflows/build.yml`) compila, ejecuta los tests y comprueba que la app del instalador arranca en macOS en cada cambio. Cada cambio en la rama `claude/flux-studio-macos-app-afvdnk` publica además el `.dmg` en la release **ultima**, que es la que descarga `install.sh`.
 
-### Puntos de la API sin verificar en la documentación
+### Comprobación contra la documentación de BFL
 
-La documentación de BFL no se pudo consultar desde el entorno de desarrollo. Se siguieron la especificación del proyecto y las guías oficiales de FLUX 3. Conviene revisar estos puntos si BFL devuelve errores de parámetro (422):
+El 1-11-2026 se contrastaron con la referencia oficial de la API (docs.bfl.ml) todos los campos que envía la app:
 
-- Nombres de campos de Outpainting, Borrar, Deblur y Probador virtual (`vto-v2`).
-- El campo del vídeo en `video-edit-v1` (`video`; el conector oficial lo llama `input_video`).
-- La frase de una región con imagen de referencia en Editar con precisión. El texto del centro («in the centre of the frame») sí está verificado con la herramienta oficial.
+- **FLUX 3 Image** (`flux-3-image`): `prompt`, `images`, `aspect_ratio`, `resolution` (también `match_input`), `safety_tolerance`, `grounding`. Correcto.
+- **Ampliar** (`flux-tools/outpainting-v1`): `input_image`, `width`, `height` (mínimo 64), `prompt`, `reference_offset_x/y`, `auto_crop`, `mode` (`high`/`fast`), `disable_pup`, `safety_tolerance`, `output_format`. Correcto.
+- **Borrar** (`flux-tools/erase-v1`): `image`, `mask` (blanco = borrar, mismo tamaño que la imagen), `dilate_pixels` (0–25), `seed`, `safety_tolerance`, `output_format`. Correcto.
+- **Deblur** (`flux-tools/deblur-v1`): `image`, `seed`, `safety_tolerance`, `output_format`. Correcto.
+- **Probador** (`flux-tools/vto-v2`): `prompt`, `person`, `garment`, `seed`, `safety_tolerance`, `output_format`, y la fórmula de prompt recomendada. Correcto.
+- **Editar vídeo** (`flux-tools/video-edit-v1`): el campo es `video` (URL o mp4 en base64), con `prompt` de hasta 4096 caracteres. Correcto.
+- **Regiones de Editar:** el formato de las filas sigue la herramienta oficial de Precise Editing y no coincide del todo con la tabla de la documentación de FLUX 3 (filas Keep/Move/New/Remove con `from`, `src_bbox`, `tgt_bbox` y `desc`; la app omite `tgt_bbox` en las filas de editar y proteger y añade un campo `kind`). No da error, porque las filas van dentro del texto del prompt, pero podría alinearse.
