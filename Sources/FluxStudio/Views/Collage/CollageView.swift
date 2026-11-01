@@ -9,13 +9,18 @@ struct CollageWorkspace: View {
     @EnvironmentObject private var state: AppState
     @ObservedObject var model: CollageModel
     @State private var monitor: Any?
+    /// Zoom, desplazamiento y recorte del lienzo.
+    @StateObject private var viewer = ViewerZoom(minZoom: 0.2)
+    /// Collage aplanado mientras se compara con la foto base («Antes / Después»).
+    @State private var compareImage: NSImage?
 
     var body: some View {
         ZStack {
             if model.base == nil {
                 CollageEmptyState(model: model)
             } else {
-                CollageCanvas(model: model)
+                CollageCanvas(model: model, viewer: viewer, compareImage: compareImage)
+                    .zoomEvents(viewer)
                 HStack {
                     Spacer()
                     CollageLayersPanel(model: model)
@@ -26,7 +31,7 @@ struct CollageWorkspace: View {
                 }
                 VStack(spacing: 8) {
                     Spacer()
-                    CollageToolbar(model: model)
+                    CollageToolbar(model: model, viewer: viewer, compareImage: $compareImage)
                     CollageBar(model: model)
                         .padding(.bottom, 20)
                 }
@@ -34,6 +39,10 @@ struct CollageWorkspace: View {
         }
         .onAppear(perform: installMonitor)
         .onDisappear(perform: removeMonitor)
+        .onChange(of: model.base?.url) {
+            viewer.reset()
+            compareImage = nil
+        }
     }
 
     // MARK: Teclado
@@ -105,13 +114,15 @@ struct CollageLayout {
     let scale: CGFloat
     let frame: CGRect
 
-    init(container: CGSize, canvas: CGSize) {
+    /// `zoom` = 1 es el lienzo ajustado al espacio libre; `pan` lo desplaza en pantalla.
+    init(container: CGSize, canvas: CGSize, zoom: CGFloat = 1, pan: CGSize = .zero) {
         let insets = EdgeInsets(top: 28, leading: 32, bottom: 250, trailing: 280)
         let availW = max(100, container.width - insets.leading - insets.trailing)
         let availH = max(100, container.height - insets.top - insets.bottom)
-        scale = min(availW / max(canvas.width, 1), availH / max(canvas.height, 1))
+        scale = min(availW / max(canvas.width, 1), availH / max(canvas.height, 1)) * zoom
         let size = CGSize(width: canvas.width * scale, height: canvas.height * scale)
-        frame = CGRect(x: insets.leading + (availW - size.width) / 2, y: insets.top + (availH - size.height) / 2,
+        frame = CGRect(x: insets.leading + (availW - size.width) / 2 + pan.width,
+                       y: insets.top + (availH - size.height) / 2 + pan.height,
                        width: size.width, height: size.height)
     }
 
@@ -135,18 +146,28 @@ private struct CollageDrag {
 
 private struct CollageCanvas: View {
     @ObservedObject var model: CollageModel
+    @ObservedObject var viewer: ViewerZoom
+    let compareImage: NSImage?
     @State private var drag: CollageDrag?
     @State private var pressedNothing = false
     @State private var painting = false
     @State private var hoverPoint: CGPoint?
+    @State private var compareFraction: CGFloat = 0.5
 
     var body: some View {
         GeometryReader { geo in
-            let layout = CollageLayout(container: geo.size, canvas: model.canvasSize)
+            let layout = CollageLayout(container: geo.size, canvas: model.canvasSize, zoom: viewer.zoom, pan: viewer.pan)
+            let busy = compareImage != nil || viewer.isCropping
             ZStack(alignment: .topLeading) {
                 Theme.background
 
-                if let base = model.base {
+                if let base = model.base, let compareImage {
+                    // Antes (foto base) / Después (collage).
+                    CompareView(before: base.image, after: compareImage, fraction: $compareFraction,
+                                beforeLabel: "FOTO BASE", afterLabel: "COLLAGE")
+                        .frame(width: layout.frame.width, height: layout.frame.height)
+                        .offset(x: layout.frame.minX, y: layout.frame.minY)
+                } else if let base = model.base {
                     Image(nsImage: base.image)
                         .resizable()
                         .interpolation(.high)
@@ -156,21 +177,23 @@ private struct CollageCanvas: View {
                 }
 
                 // Capas (lo que sale del lienzo no cuenta: se recorta igual que al aplanar).
-                ZStack(alignment: .topLeading) {
-                    ForEach(model.layers) { layer in
-                        if layer.isVisible {
-                            CollageLayerImage(layer: layer, quad: layout.viewQuad(layer.quad))
+                if compareImage == nil {
+                    ZStack(alignment: .topLeading) {
+                        ForEach(model.layers) { layer in
+                            if layer.isVisible {
+                                CollageLayerImage(layer: layer, quad: layout.viewQuad(layer.quad))
+                            }
                         }
                     }
-                }
-                .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
-                .mask(alignment: .topLeading) {
-                    Rectangle()
-                        .frame(width: layout.frame.width, height: layout.frame.height)
-                        .offset(x: layout.frame.minX, y: layout.frame.minY)
+                    .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
+                    .mask(alignment: .topLeading) {
+                        Rectangle()
+                            .frame(width: layout.frame.width, height: layout.frame.height)
+                            .offset(x: layout.frame.minX, y: layout.frame.minY)
+                    }
                 }
 
-                if let layer = model.selected, layer.isVisible {
+                if !busy, let layer = model.selected, layer.isVisible {
                     if model.brushMode != nil {
                         // Con la goma, solo el contorno de la capa (sin tiradores).
                         Path { path in
@@ -186,8 +209,13 @@ private struct CollageCanvas: View {
                     }
                 }
 
+                if viewer.isCropping, compareImage == nil {
+                    CropOverlay(viewer: viewer, frame: layout.frame, space: "collage",
+                                imageAspect: model.canvasSize.height > 0 ? model.canvasSize.width / model.canvasSize.height : 1)
+                }
+
                 // Cursor del pincel.
-                if model.brushMode != nil, model.selected != nil, let p = hoverPoint {
+                if !busy, model.brushMode != nil, model.selected != nil, let p = hoverPoint {
                     Circle()
                         .strokeBorder(model.brushMode == .erase ? Color.white : Theme.region, lineWidth: 1.5)
                         .background(Circle().strokeBorder(Color.black.opacity(0.35), lineWidth: 0.5).padding(-1))
@@ -197,8 +225,9 @@ private struct CollageCanvas: View {
                 }
             }
             .contentShape(Rectangle())
-            .gesture(dragGesture(layout))
+            .gesture(dragGesture(layout), including: busy ? .subviews : .all)
             .coordinateSpace(name: "collage")
+            .clipped()
             .onContinuousHover { phase in
                 switch phase {
                 case .active(let p): hoverPoint = p
@@ -597,6 +626,8 @@ private struct CollageLayersPanel: View {
 private struct CollageToolbar: View {
     @EnvironmentObject private var state: AppState
     @ObservedObject var model: CollageModel
+    @ObservedObject var viewer: ViewerZoom
+    @Binding var compareImage: NSImage?
 
     var body: some View {
         HStack(spacing: 2) {
@@ -637,6 +668,28 @@ private struct CollageToolbar: View {
                 .disabled(!model.canRedo)
                 .help("Rehacer (⇧⌘Z)")
             divider
+            ToolIconButton(icon: "rectangle.split.2x1",
+                           help: "Antes / Después: comparar la foto base con el collage",
+                           isActive: compareImage != nil) {
+                toggleCompare()
+            }
+            ToolIconButton(icon: "crop",
+                           help: "Recortar: el collage recortado se guarda como imagen nueva en la tira",
+                           isActive: viewer.isCropping) {
+                if viewer.isCropping {
+                    viewer.cancelCrop()
+                } else {
+                    compareImage = nil
+                    model.brushMode = nil
+                    viewer.startCrop()
+                }
+            }
+            if viewer.isCropping {
+                CropActionButtons(viewer: viewer, imageAspect: canvasAspect) { applyCrop() }
+            }
+            divider
+            ZoomButtons(zoom: $viewer.zoom, pan: $viewer.pan, minZoom: viewer.minZoom, maxZoom: viewer.maxZoom)
+            divider
             Image(systemName: "questionmark.circle")
                 .font(.system(size: 13))
                 .foregroundStyle(Theme.textSecondary)
@@ -648,6 +701,7 @@ private struct CollageToolbar: View {
                 Círculo de arriba: girar (⇧ = de 15 en 15°).
                 Flechas: mover un poco · ⌘D duplicar · ⌫ borrar · ⌘Z deshacer.
                 Goma (E) y Recuperar (R) pintan sobre la capa seleccionada; [ y ] cambian el tamaño; V o Esc vuelven a mover.
+                Zoom: ⌘ + rueda o pellizco; con zoom, dos dedos desplazan el lienzo.
                 """)
         }
         .padding(.horizontal, 6)
@@ -657,6 +711,35 @@ private struct CollageToolbar: View {
 
     private var divider: some View {
         Rectangle().fill(Theme.border).frame(width: 1, height: 20).padding(.horizontal, 6)
+    }
+
+    private var canvasAspect: CGFloat {
+        let size = model.canvasSize
+        return size.height > 0 ? size.width / size.height : 1
+    }
+
+    private func toggleCompare() {
+        if compareImage != nil {
+            compareImage = nil
+            return
+        }
+        viewer.cancelCrop()
+        guard let flat = model.flatten() else { return }
+        compareImage = NSImage(cgImage: flat, size: NSSize(width: flat.width, height: flat.height))
+    }
+
+    /// Guarda el collage aplanado y su recorte como imagen nueva (en la tira, con aviso «Listo · Ver»).
+    private func applyCrop() {
+        guard let rect = viewer.cropRect else { return }
+        viewer.cancelCrop()
+        do {
+            let flattened = try model.saveFlattened()
+            if let url = state.saveCrop(of: flattened, rect: rect, label: "Recorte del collage") {
+                state.readyNotice = ReadyNotice(url: url, label: "Recorte del collage")
+            }
+        } catch {
+            state.alert = AppAlert(title: "No se ha podido recortar", message: error.localizedDescription)
+        }
     }
 
     private func renameProject() {

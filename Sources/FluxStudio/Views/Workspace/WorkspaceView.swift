@@ -16,6 +16,8 @@ struct WorkspaceView: View {
     @State private var compare = false
     @State private var focusedSize: CGSize?
     @State private var studioWidth: CGFloat = 900
+    /// Zoom y recorte de la imagen en grande (y el recorte de Editar).
+    @StateObject private var viewer = ViewerZoom()
 
     var body: some View {
         HStack(spacing: 0) {
@@ -64,10 +66,16 @@ struct WorkspaceView: View {
         }
         .onChange(of: state.focusedURL) {
             compare = false
+            viewer.reset()
             syncTool()
             updateFocusedSize()
         }
-        .onChange(of: state.tool) { syncTool() }
+        .onChange(of: state.tool) {
+            viewer.reset()
+            syncTool()
+        }
+        .onChange(of: compare) { viewer.cancelCrop() }
+        .onChange(of: state.compareURL) { viewer.cancelCrop() }
         .onChange(of: preciseEdit.currentIndex) {
             // Navegar entre versiones en Editar también cambia la imagen seleccionada.
             if state.tool == .edit, let url = preciseEdit.current?.fileURL, url != state.focusedURL {
@@ -94,8 +102,10 @@ struct WorkspaceView: View {
         VStack(spacing: 0) {
             GeometryReader { geo in
                 let infoHeight: CGFloat = state.focusedURL == nil ? 0 : 34
+                // A la derecha de la imagen, la columna de zoom y recorte.
+                let sideControls: CGFloat = showsViewerControls ? 88 : 0
                 let available = CGSize(
-                    width: max(200, geo.size.width - 64),
+                    width: max(200, geo.size.width - 64 - sideControls),
                     height: max(120, geo.size.height - infoHeight - 40)
                 )
                 let stageSize = contentSize.map { fittedSize($0, in: available) }
@@ -104,8 +114,15 @@ struct WorkspaceView: View {
                 VStack(spacing: 8) {
                     stage
                         .frame(width: stageSize.width, height: stageSize.height)
+                        .overlay(alignment: .topTrailing) {
+                            if showsViewerControls {
+                                StageViewerControls(viewer: viewer, imageAspect: focusedAspect,
+                                                    canCrop: state.compareURL == nil && !compare)
+                                    .alignmentGuide(.trailing) { d in d[.leading] - 10 }
+                            }
+                        }
                     if state.focusedURL != nil {
-                        ImageInfoRow(compare: $compare, showsCompare: showsCompare)
+                        ImageInfoRow(compare: $compare, showsCompare: showsCompare, canCompare: canCompare)
                             .frame(width: max(stageSize.width, min(available.width, 640)))
                             .frame(height: infoHeight)
                     }
@@ -124,7 +141,7 @@ struct WorkspaceView: View {
     private var editLayout: some View {
         ZStack {
             if preciseEdit.current != nil {
-                EditCanvas()
+                EditCanvas(viewer: viewer)
             } else {
                 ToolLoadingView(isLoading: true, error: preciseEdit.loadError)
             }
@@ -134,7 +151,7 @@ struct WorkspaceView: View {
                     PromptPanel()
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
-                EditToolbar(confirmReset: $confirmReset)
+                EditToolbar(viewer: viewer, confirmReset: $confirmReset)
                 PreciseEditBar(showPrompt: $showPrompt)
                     .padding(.bottom, 20)
             }
@@ -144,6 +161,7 @@ struct WorkspaceView: View {
     /// Tamaño (proporción) de lo que se muestra en el escenario.
     private var contentSize: CGSize? {
         guard state.focusedURL != nil else { return nil }
+        if compare || state.compareURL != nil { return focusedSize }
         switch state.tool {
         case .erase: return state.erase.input?.size ?? focusedSize
         case .fill: return state.fill.input?.size ?? focusedSize
@@ -155,9 +173,35 @@ struct WorkspaceView: View {
         }
     }
 
+    /// «Antes / Después» está siempre que se ve una imagen (no un vídeo)…
     private var showsCompare: Bool {
-        state.compareURL == nil && state.tool != .erase && state.tool != .fill && state.tool != .outpaint
-            && state.parent(of: state.focusedURL) != nil
+        guard state.compareURL == nil, let url = state.focusedURL else { return false }
+        return !VideoModel.isVideo(url)
+    }
+
+    /// …y se puede usar cuando la imagen sale de otra.
+    private var canCompare: Bool {
+        showsCompare && state.parent(of: state.focusedURL) != nil
+    }
+
+    /// La imagen se ve en `FocusedStage` (no en el lienzo de Borrar, Rellenar o Ampliar).
+    private var showsFocusedStage: Bool {
+        if state.compareURL != nil || compare { return true }
+        switch state.tool {
+        case .erase, .fill, .outpaint: return state.focusedURL == nil
+        default: return true
+        }
+    }
+
+    /// Zoom y recorte a la derecha de la imagen.
+    private var showsViewerControls: Bool {
+        guard let url = state.focusedURL, !VideoModel.isVideo(url) else { return false }
+        return showsFocusedStage
+    }
+
+    private var focusedAspect: CGFloat {
+        guard let size = focusedSize, size.height > 0 else { return 1 }
+        return size.width / size.height
     }
 
     private func updateFocusedSize() {
@@ -178,7 +222,7 @@ struct WorkspaceView: View {
 
     @ViewBuilder
     private var stage: some View {
-        switch state.compareURL != nil ? WorkspaceTool.generate : state.tool {
+        switch state.compareURL != nil || compare ? WorkspaceTool.generate : state.tool {
         case .erase where state.focusedURL != nil:
             MaskStage(model: state.erase)
         case .fill where state.focusedURL != nil:
@@ -186,7 +230,7 @@ struct WorkspaceView: View {
         case .outpaint where state.focusedURL != nil:
             OutpaintStage(model: state.outpaint)
         default:
-            FocusedStage(compare: compare)
+            FocusedStage(compare: compare, viewer: viewer)
         }
     }
 
@@ -322,6 +366,7 @@ private struct ImageInfoRow: View {
     @EnvironmentObject private var history: HistoryStore
     @Binding var compare: Bool
     let showsCompare: Bool
+    let canCompare: Bool
 
     var body: some View {
         HStack(spacing: 8) {
@@ -366,7 +411,11 @@ private struct ImageInfoRow: View {
                         Chip(icon: "rectangle.split.2x1", text: "Antes / Después", isActive: compare)
                     }
                     .buttonStyle(.plain)
-                    .help("Comparar con la imagen de la que sale este resultado")
+                    .disabled(!canCompare)
+                    .opacity(canCompare ? 1 : 0.45)
+                    .help(canCompare
+                        ? "Comparar con la imagen de la que sale este resultado"
+                        : "Esta imagen no sale de otra, así que no hay «antes». Para comparar dos fotos cualesquiera: ⌘-clic en una miniatura de la tira.")
                 }
                 if VideoModel.isVideo(url) {
                     ForEach([VideoModel.Mode.v2v, .edit, .upscale]) { mode in
@@ -410,6 +459,8 @@ private struct ImageInfoRow: View {
 private struct FocusedStage: View {
     @EnvironmentObject private var state: AppState
     let compare: Bool
+    @ObservedObject var viewer: ViewerZoom
+    @State private var panStart: CGSize?
     @State private var image: NSImage?
     @State private var parentImage: NSImage?
     @State private var otherImage: NSImage?
@@ -427,22 +478,47 @@ private struct FocusedStage: View {
                         ShimmerView()
                     }
                 } else if let image {
-                    Group {
-                        if state.compareURL != nil, let otherImage {
-                            // Dos fotos de la galería: la elegida para comparar a la izquierda.
-                            CompareView(before: otherImage, after: image, fraction: $fraction,
-                                        beforeLabel: "IMAGEN 1", afterLabel: "IMAGEN 2")
-                        } else if compare, let parentImage {
-                            CompareView(before: parentImage, after: image, fraction: $fraction)
-                        } else {
-                            Image(nsImage: image)
-                                .resizable()
-                                .interpolation(.high)
-                                .onDrag { fileDragProvider(url) }
+                    GeometryReader { geo in
+                        let comparing = state.compareURL != nil || compare
+                        ZStack(alignment: .topLeading) {
+                            Group {
+                                if state.compareURL != nil, let otherImage {
+                                    // Dos fotos de la galería: la elegida para comparar a la izquierda.
+                                    CompareView(before: otherImage, after: image, fraction: $fraction,
+                                                beforeLabel: "IMAGEN 1", afterLabel: "IMAGEN 2")
+                                } else if compare, let parentImage {
+                                    CompareView(before: parentImage, after: image, fraction: $fraction)
+                                } else if viewer.zoom > 1 || viewer.isCropping {
+                                    // Con zoom, arrastrar desplaza la imagen (en vez de sacarla al Finder).
+                                    Image(nsImage: image)
+                                        .resizable()
+                                        .interpolation(.high)
+                                } else {
+                                    Image(nsImage: image)
+                                        .resizable()
+                                        .interpolation(.high)
+                                        .onDrag { fileDragProvider(url) }
+                                }
+                            }
+                            .frame(width: geo.size.width, height: geo.size.height)
+                            .scaleEffect(viewer.zoom)
+                            .offset(viewer.pan)
+
+                            if viewer.isCropping && !comparing {
+                                CropOverlay(viewer: viewer, frame: viewer.imageFrame(in: geo.size), space: "stage",
+                                            imageAspect: geo.size.height > 0 ? geo.size.width / geo.size.height : 1)
+                            }
                         }
+                        .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
+                        .coordinateSpace(name: "stage")
+                        .contentShape(Rectangle())
+                        .gesture(panGesture, including: viewer.zoom > 1 && !viewer.isCropping && !comparing ? .all : .subviews)
                     }
+                    .zoomEvents(viewer)
                     .contextMenu { ResultActions(fileURL: url) }
-                    .onTapGesture(count: 2) { NSWorkspace.shared.open(url) }
+                    .onTapGesture(count: 2) {
+                        if !viewer.isCropping { NSWorkspace.shared.open(url) }
+                    }
                 } else {
                     ShimmerView()
                 }
@@ -492,6 +568,53 @@ private struct FocusedStage: View {
                   let parent = state.parent(of: url) else { return }
             parentImage = await ThumbnailLoader.load(parent, maxPixelSize: 3000)
         }
+    }
+}
+
+extension FocusedStage {
+    /// Con zoom: arrastrar desplaza la imagen.
+    fileprivate var panGesture: some Gesture {
+        DragGesture(minimumDistance: 2)
+            .onChanged { value in
+                if panStart == nil { panStart = viewer.pan }
+                guard let start = panStart else { return }
+                viewer.pan = CGSize(width: start.width + value.translation.width,
+                                    height: start.height + value.translation.height)
+            }
+            .onEnded { _ in panStart = nil }
+    }
+}
+
+/// Columna de zoom y recorte a la derecha de la imagen en grande.
+private struct StageViewerControls: View {
+    @EnvironmentObject private var state: AppState
+    @ObservedObject var viewer: ViewerZoom
+    let imageAspect: CGFloat
+    let canCrop: Bool
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if viewer.isCropping, let url = state.focusedURL {
+                CropActionButtons(viewer: viewer, imageAspect: imageAspect, axis: .vertical) {
+                    guard let rect = viewer.cropRect else { return }
+                    viewer.cancelCrop()
+                    state.saveCrop(of: url, rect: rect)
+                }
+            } else {
+                ZoomButtons(zoom: $viewer.zoom, pan: $viewer.pan, minZoom: viewer.minZoom,
+                            maxZoom: viewer.maxZoom, axis: .vertical)
+                Rectangle().fill(Theme.border).frame(width: 18, height: 1).padding(.vertical, 4)
+                ToolIconButton(icon: "crop", help: canCrop
+                    ? "Recortar: el recorte se guarda como imagen nueva en la tira; la original no cambia"
+                    : "Termina la comparación para recortar") {
+                    viewer.startCrop()
+                }
+                .disabled(!canCrop)
+            }
+        }
+        .padding(.vertical, 4)
+        .padding(.horizontal, 3)
+        .surfaceStyle(cornerRadius: 12)
     }
 }
 

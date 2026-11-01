@@ -5,6 +5,8 @@ import SwiftUI
 /// Lienzo con la imagen, zoom/pan y las regiones dibujadas encima.
 struct EditCanvas: View {
     @EnvironmentObject private var model: PreciseEditModel
+    /// Recorte (el zoom de Editar sigue en el modelo).
+    @ObservedObject var viewer: ViewerZoom
     @State private var drawStart: CGPoint?
     @State private var drawCurrent: CGPoint?
     @State private var panStart: CGSize?
@@ -38,7 +40,10 @@ struct EditCanvas: View {
                             .offset(x: layout.imageFrame.minX, y: layout.imageFrame.minY)
                             .allowsHitTesting(false)
 
-                        if model.showRegions {
+                        if viewer.isCropping {
+                            CropOverlay(viewer: viewer, frame: layout.imageFrame, space: "canvas",
+                                        imageAspect: version.pixelSize.height > 0 ? version.pixelSize.width / version.pixelSize.height : 1)
+                        } else if model.showRegions {
                             regionsLayer(layout)
                         }
                         if let rect = drawingRect(layout) {
@@ -49,7 +54,7 @@ struct EditCanvas: View {
                                 .offset(x: rect.minX, y: rect.minY)
                                 .allowsHitTesting(false)
                         }
-                        if model.showRegions, !model.isDraggingBox, let id = model.selectedRegionID,
+                        if model.showRegions, !viewer.isCropping, !model.isDraggingBox, let id = model.selectedRegionID,
                            let region = model.regions.first(where: { $0.id == id }) {
                             RegionInspector(region: region)
                                 .id(region.id) // estado propio por región (p. ej. deshacer «Mejorar»)
@@ -140,7 +145,7 @@ struct EditCanvas: View {
                                        height: panStart!.height + value.translation.height)
                     return
                 }
-                guard !model.compareMode else { return }
+                guard !model.compareMode, !viewer.isCropping else { return }
                 if drawStart == nil { drawStart = value.startLocation }
                 drawCurrent = value.location
             }
@@ -408,38 +413,6 @@ struct BoxEditor: View {
             case .bottomRight: return CGPoint(x: r.maxX, y: r.maxY)
             }
         }
-    }
-}
-
-// MARK: - Zoom
-
-/// Zoom del lienzo (100 % = imagen ajustada a la ventana).
-struct ZoomControls: View {
-    @EnvironmentObject private var model: PreciseEditModel
-
-    var body: some View {
-        HStack(spacing: 2) {
-            button("minus") { model.zoom = max(0.2, model.zoom / 1.25) }
-            Text("\(Int((model.zoom * 100).rounded()))%")
-                .font(.system(size: 11, weight: .medium))
-                .monospacedDigit()
-                .frame(width: 46)
-            button("plus") { model.zoom = min(8, model.zoom * 1.25) }
-            Rectangle().fill(Theme.border).frame(width: 1, height: 16).padding(.horizontal, 4)
-            Button("Ajustar") { model.zoom = 1; model.pan = .zero }
-                .buttonStyle(.plain)
-                .font(.system(size: 11, weight: .medium))
-                .padding(.trailing, 6)
-        }
-        .foregroundStyle(Theme.textPrimary)
-        .help("Zoom: ⌘ + rueda o pellizco. Desplazar: espacio + arrastrar, o dos dedos en el trackpad.")
-    }
-
-    private func button(_ icon: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: icon).font(.system(size: 11, weight: .semibold)).frame(width: 24, height: 22)
-        }
-        .buttonStyle(.plain)
     }
 }
 

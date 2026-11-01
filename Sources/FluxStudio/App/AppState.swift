@@ -470,6 +470,49 @@ final class AppState: ObservableObject {
         tasks[itemID] = nil
     }
 
+    // MARK: - Recortar
+
+    /// Guarda un recorte de `source` como resultado nuevo (en la tira y el Historial, con
+    /// «Antes / Después» respecto a la imagen recortada) y lo selecciona.
+    /// `image` permite recortar algo que no está en disco tal cual (p. ej. el collage aplanado).
+    @discardableResult
+    func saveCrop(of source: URL, image: CGImage? = nil, rect: CGRect, label: String = "Recorte") -> URL? {
+        do {
+            guard let full = image ?? ImageCropper.loadOriented(fileURL: source) else {
+                throw ImageCropper.CropError.unreadable
+            }
+            let cropped = try ImageCropper.crop(full, normalized: rect)
+            let encoded = try ImageCropper.encode(cropped, likeFile: image == nil ? source : nil)
+            let sourceRecord = history.items.first { $0.fileURL == source }?.record
+            var record = GenerationRecord(
+                taskID: UUID().uuidString.lowercased(),
+                endpoint: "local/crop",
+                model: label,
+                prompt: sourceRecord?.prompt ?? "\(label) de \(source.lastPathComponent)",
+                sentPrompt: "",
+                parameters: .object([
+                    "x": .number(Double(rect.minX)), "y": .number(Double(rect.minY)),
+                    "width": .number(Double(rect.width)), "height": .number(Double(rect.height)),
+                    "pixel_width": .number(Double(cropped.width)), "pixel_height": .number(Double(cropped.height)),
+                ]),
+                region: settings.region.rawValue
+            )
+            record.sourceFile = source.path
+            let stored = try ResultStore.save(
+                data: encoded.data, mimeType: encoded.mimeType, sourceURL: nil,
+                base: settings.outputFolder, prefix: "recorte", index: 0, record: record
+            )
+            history.add(stored)
+            parents[stored.fileURL] = source
+            focusedURL = stored.fileURL
+            notice = "Recorte guardado (\(cropped.width)×\(cropped.height))"
+            return stored.fileURL
+        } catch {
+            alert = AppAlert(title: "No se ha podido recortar", message: error.localizedDescription)
+            return nil
+        }
+    }
+
     // MARK: - Reutilizar y enviar a otras herramientas
 
     /// Recupera prompt y parámetros de un resultado guardado.

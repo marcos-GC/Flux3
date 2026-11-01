@@ -67,6 +67,28 @@ struct ToolTextButton: View {
     }
 }
 
+/// Botón solo con icono para las barras de herramientas (el nombre sale al pasar el ratón).
+struct ToolIconButton: View {
+    let icon: String
+    let help: String
+    var isActive = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 13))
+                .foregroundStyle(Theme.textPrimary)
+                .frame(width: 30, height: 28)
+                .background(RoundedRectangle(cornerRadius: 8).fill(isActive ? Theme.border.opacity(0.6) : .clear))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(help)
+        .accessibilityLabel(help)
+    }
+}
+
 /// Etiqueta pequeña en mayúsculas con tracking (estilo FLUX Tools).
 struct SectionLabel: View {
     let text: String
