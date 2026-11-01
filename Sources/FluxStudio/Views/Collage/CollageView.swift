@@ -630,7 +630,7 @@ private struct CollageToolbar: View {
     @Binding var compareImage: NSImage?
 
     var body: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: 0) {
             Menu {
                 Button("Renombrar…") { renameProject() }
                 Button("Mostrar en Finder") { model.revealProjectInFinder() }
@@ -646,27 +646,22 @@ private struct CollageToolbar: View {
                     }
                 }
             } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "square.3.layers.3d").font(.system(size: 12))
-                    Text(model.projectName.isEmpty ? "Collage sin guardar" : model.projectName)
-                        .font(.system(size: 11, weight: .medium))
-                        .lineLimit(1)
-                        .frame(maxWidth: 180)
-                }
-                .padding(.horizontal, 8)
+                Image(systemName: "square.3.layers.3d")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.textPrimary)
+                    .frame(width: 30, height: 28)
             }
             .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
             .fixedSize()
-            .help("Se guarda solo en «Collages/Proyectos», dentro de la carpeta de salida. Desde aquí puedes renombrarlo, abrir otro o empezar uno nuevo.")
+            .help("Proyecto: \(model.projectName.isEmpty ? "collage sin guardar" : "«\(model.projectName)»"). Se guarda solo en «Collages/Proyectos», dentro de la carpeta de salida. Desde aquí puedes renombrarlo, abrir otro o empezar uno nuevo.")
             divider
-            ToolTextButton(icon: "photo.badge.plus", title: "Añadir objetos") { model.add(chooseImages()) }
+            ToolIconButton(icon: "photo.badge.plus", help: "Añadir objetos") { model.add(chooseImages()) }
             divider
-            ToolTextButton(icon: "arrow.uturn.backward", title: "Deshacer") { model.undo() }
+            ToolIconButton(icon: "arrow.uturn.backward", help: "Deshacer (⌘Z)") { model.undo() }
                 .disabled(!model.canUndo)
-                .help("Deshacer (⌘Z)")
-            ToolTextButton(icon: "arrow.uturn.forward", title: "Rehacer") { model.redo() }
+            ToolIconButton(icon: "arrow.uturn.forward", help: "Rehacer (⇧⌘Z)") { model.redo() }
                 .disabled(!model.canRedo)
-                .help("Rehacer (⇧⌘Z)")
             divider
             ToolIconButton(icon: "rectangle.split.2x1",
                            help: "Antes / Después: comparar la foto base con el collage",
@@ -687,7 +682,7 @@ private struct CollageToolbar: View {
             if viewer.isCropping {
                 CropActionButtons(viewer: viewer, imageAspect: canvasAspect) { applyCrop() }
             }
-            divider
+            Spacer(minLength: 8)
             ZoomButtons(zoom: $viewer.zoom, pan: $viewer.pan, minZoom: viewer.minZoom, maxZoom: viewer.maxZoom)
             divider
             Image(systemName: "questionmark.circle")
@@ -704,13 +699,17 @@ private struct CollageToolbar: View {
                 Zoom: ⌘ + rueda o pellizco; con zoom, dos dedos desplazan el lienzo.
                 """)
         }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 5)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .frame(maxWidth: .infinity)
         .surfaceStyle(cornerRadius: 14)
+        // Mismo ancho que la caja de abajo.
+        .frame(maxWidth: 900)
+        .padding(.horizontal, 28)
     }
 
     private var divider: some View {
-        Rectangle().fill(Theme.border).frame(width: 1, height: 20).padding(.horizontal, 6)
+        Rectangle().fill(Theme.border).frame(width: 1, height: 18).padding(.horizontal, 4)
     }
 
     private var canvasAspect: CGFloat {

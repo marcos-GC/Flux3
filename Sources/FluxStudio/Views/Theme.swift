@@ -42,31 +42,6 @@ enum Theme {
     static let cornerPromptBar: CGFloat = 28
 }
 
-/// Botón de texto en mayúsculas con tracking (barra superior estilo FLUX Tools).
-struct ToolTextButton: View {
-    let icon: String
-    let title: String
-    var isActive = false
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                Image(systemName: icon).font(.system(size: 12))
-                Text(title.uppercased())
-                    .font(.system(size: 11, weight: .medium, design: .monospaced))
-                    .tracking(1)
-            }
-            .foregroundStyle(Theme.textPrimary)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .background(RoundedRectangle(cornerRadius: 8).fill(isActive ? Theme.border.opacity(0.6) : .clear))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-}
-
 /// Botón solo con icono para las barras de herramientas (el nombre sale al pasar el ratón).
 struct ToolIconButton: View {
     let icon: String
