@@ -113,7 +113,7 @@ Una capa propia de la app, por encima de FLUX: un pequeño Photoshop para montar
 
 ### Mejorar prompts con Claude (opcional)
 
-En la caja de **Generar** y de **Vídeo** hay un botón **Mejorar** (⌘E). Envía tu idea a **Claude Haiku 5.5**, que la reescribe en inglés siguiendo las guías oficiales de prompting de FLUX 3 sin cambiar lo que pediste. Debajo explica en español qué ha cambiado, y con **↶** vuelves a tu texto.
+En la caja de **Generar** y de **Vídeo** hay un botón **Mejorar** (⌘E). Envía tu idea a **Claude Haiku 5.5**, que la reescribe en inglés siguiendo las guías oficiales de prompting de FLUX 3 sin cambiar lo que pediste. Con imágenes de referencia escribe la edición como pide BFL: qué objetivo, qué cambia y en qué, y qué se conserva, con la imagen base como image 1. Debajo explica en español qué ha cambiado, y con **↶** vuelves a tu texto.
 
 En **Editar** también está: junto a «Cambio en toda la imagen» y, con la varita pequeña, dentro de la tarjeta de cada región (Editar, Nuevo y Mover). Ahí Claude escribe una instrucción corta y concreta, pensada para encajar en el prompt de edición que monta la app (sin repetir posiciones ni cajas). ⌘E mejora la región abierta o, si no hay ninguna, el cambio global.
 
@@ -176,4 +176,4 @@ El 1-11-2026 se contrastaron con la referencia oficial de la API (docs.bfl.ml) t
 - **Deblur** (`flux-tools/deblur-v1`): `image`, `seed`, `safety_tolerance`, `output_format`. Correcto.
 - **Probador** (`flux-tools/vto-v2`): `prompt`, `person`, `garment`, `seed`, `safety_tolerance`, `output_format`, y la fórmula de prompt recomendada. Correcto.
 - **Editar vídeo** (`flux-tools/video-edit-v1`): el campo es `video` (URL o mp4 en base64), con `prompt` de hasta 4096 caracteres. Correcto.
-- **Regiones de Editar:** el formato de las filas sigue la herramienta oficial de Precise Editing y no coincide del todo con la tabla de la documentación de FLUX 3 (filas Keep/Move/New/Remove con `from`, `src_bbox`, `tgt_bbox` y `desc`; la app omite `tgt_bbox` en las filas de editar y proteger y añade un campo `kind`). No da error, porque las filas van dentro del texto del prompt, pero podría alinearse.
+- **Regiones de Editar:** las filas de cajas siguen la tabla de la documentación de FLUX 3 («Edit an image box by box»): las regiones Editar y Nuevo son filas *New* (`from: null`, o la imagen de referencia de la región, con `tgt_bbox` y `desc`), Mover es una fila *Move* (caja de origen y de destino) y Proteger una fila *Keep* (misma caja de origen y destino). Las frases del prompt siguen siendo las de la herramienta oficial de Precise Editing.

@@ -39,7 +39,7 @@ final class PreciseEditTests: XCTestCase {
             globalInstruction: "make it black and white film photo",
             regions: [region], imageWidth: 1000, imageHeight: 1000
         )
-        let expected = #"Edit the first reference image. make it black and white film photo. Apply this edit to the marked area <region_1> in the upper middle: "make the hat bright red". Keep everything else — composition, lighting, other subjects, and style — exactly as in the reference image. [{"id":"region_1","from":"ref_image_0","src_bbox":[34,241,253,824]}]"#
+        let expected = #"Edit the first reference image. make it black and white film photo. Apply this edit to the marked area <region_1> in the upper middle: "make the hat bright red". Keep everything else — composition, lighting, other subjects, and style — exactly as in the reference image. [{"id":"region_1","from":null,"src_bbox":null,"tgt_bbox":[34,241,253,824],"desc":"make the hat bright red"}]"#
         XCTAssertEqual(prompt, expected)
     }
 
@@ -62,11 +62,11 @@ final class PreciseEditTests: XCTestCase {
         ]
         let prompt = PreciseEdit.buildPrompt(globalInstruction: "", regions: regions, imageWidth: w, imageHeight: h)
         XCTAssertTrue(prompt.contains(#"Add a new element in the marked area <region_1> in the lower right, using <ref_image_1> as the reference: "a 'green' armchair"."#))
-        XCTAssertTrue(prompt.contains(#"{"id":"region_1","from":"ref_image_1","src_bbox":null,"tgt_bbox":[700,700,900,900],"desc":"a \"green\" armchair","kind":"new"}"#))
+        XCTAssertTrue(prompt.contains(#"{"id":"region_1","from":"ref_image_1","src_bbox":[0,0,1000,1000],"tgt_bbox":[700,700,900,900],"desc":"a \"green\" armchair"}"#))
         XCTAssertTrue(prompt.contains("Move the element in the marked area <region_2> from the upper left to the upper right."))
-        XCTAssertTrue(prompt.contains(#"{"id":"region_2","from":"ref_image_0","src_bbox":[0,0,100,100],"tgt_bbox":[0,800,100,900],"kind":"move"}"#))
+        XCTAssertTrue(prompt.contains(#"{"id":"region_2","from":"ref_image_0","src_bbox":[0,0,100,100],"tgt_bbox":[0,800,100,900],"desc":"The element in this area, moved without changing its appearance."}"#))
         XCTAssertTrue(prompt.contains("Keep the marked area <region_3> in the centre of the frame unchanged."))
-        XCTAssertTrue(prompt.contains(#"{"id":"region_3","from":"ref_image_0","src_bbox":[400,400,600,600],"kind":"anchor"}"#))
+        XCTAssertTrue(prompt.contains(#"{"id":"region_3","from":"ref_image_0","src_bbox":[400,400,600,600],"tgt_bbox":[400,400,600,600],"desc":"The existing content of this area, kept exactly as it is."}"#))
     }
 
     func testEditWithReferenceAndExtraReferences() {
@@ -86,7 +86,7 @@ final class PreciseEditTests: XCTestCase {
             EditRegionSpec(number: 2, source: PixelRect(x: 712, y: 35, width: 229, height: 193), instruction: "corlour change"),
         ]
         let prompt = PreciseEdit.buildPrompt(globalInstruction: "", regions: regions, imageWidth: 1000, imageHeight: 1000)
-        let expected = #"Edit the first reference image. Apply this edit to the marked area <region_1> in the centre of the frame: "change". Apply this edit to the marked area <region_2> in the upper right: "corlour change". Keep everything else — composition, lighting, other subjects, and style — exactly as in the reference image. [{"id":"region_1","from":"ref_image_0","src_bbox":[300,300,700,700]},{"id":"region_2","from":"ref_image_0","src_bbox":[35,712,228,941]}]"#
+        let expected = #"Edit the first reference image. Apply this edit to the marked area <region_1> in the centre of the frame: "change". Apply this edit to the marked area <region_2> in the upper right: "corlour change". Keep everything else — composition, lighting, other subjects, and style — exactly as in the reference image. [{"id":"region_1","from":null,"src_bbox":null,"tgt_bbox":[300,300,700,700],"desc":"change"},{"id":"region_2","from":null,"src_bbox":null,"tgt_bbox":[35,712,228,941],"desc":"corlour change"}]"#
         XCTAssertEqual(prompt, expected)
     }
 

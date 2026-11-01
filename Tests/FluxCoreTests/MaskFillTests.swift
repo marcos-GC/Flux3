@@ -76,7 +76,7 @@ final class MaskFillTests: XCTestCase {
         XCTAssertTrue(prompt.hasPrefix("Edit the first reference image."))
         XCTAssertTrue(prompt.contains("<region_1>"))
         XCTAssertTrue(prompt.contains("\"white marble tabletop\""))
-        XCTAssertTrue(prompt.contains("\"src_bbox\":[100,100,200,300]"))
+        XCTAssertTrue(prompt.contains("\"tgt_bbox\":[100,100,200,300]"))
         XCTAssertFalse(prompt.contains("ref_image_1"))
 
         let withRef = MaskFill.prompt(instruction: "this armchair", box: box, imageWidth: 1000, imageHeight: 1000,

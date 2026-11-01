@@ -22,13 +22,13 @@ public struct PixelRect: Equatable, Sendable, Codable {
 
 /// Tipo de región (modo avanzado).
 public enum RegionKind: String, CaseIterable, Sendable, Codable {
-    /// Cambiar lo que hay dentro de la caja (solo `src_bbox`).
+    /// Cambiar lo que hay dentro de la caja: fila «New» (`from: null`, `tgt_bbox`, `desc`).
     case edit
-    /// Crear un elemento nuevo (`src_bbox: null`, `tgt_bbox`, `desc`).
+    /// Crear un elemento nuevo: fila «New» (`from: null`, `src_bbox: null`, `tgt_bbox`, `desc`).
     case new
-    /// Mover un elemento de la caja origen a la caja destino.
+    /// Mover un elemento: fila «Move» (`src_bbox` origen y `tgt_bbox` destino).
     case move
-    /// Mantener la zona sin cambios.
+    /// Mantener la zona sin cambios: fila «Keep» (`src_bbox` igual a `tgt_bbox`).
     case anchor
 
     public var spanishName: String {
@@ -77,8 +77,10 @@ public struct EditRegionSpec: Sendable, Equatable {
     }
 }
 
-/// Construcción del prompt de "Editar con precisión", replicando la herramienta oficial
-/// flux-tools.bfl.ai/precise-editing.
+/// Construcción del prompt de "Editar con precisión". Las frases replican la herramienta oficial
+/// flux-tools.bfl.ai/precise-editing; las filas de cajas siguen la tabla de la documentación de
+/// FLUX 3 Image (docs.bfl.ml, «Edit an image box by box»): Keep, Move y New, con
+/// `id`, `from`, `src_bbox`, `tgt_bbox` y `desc` en todas.
 public enum PreciseEdit {
     /// Texto para la celda central de la cuadrícula 3×3, tal como lo escribe la herramienta
     /// oficial: "…to the marked area <region_1> in the centre of the frame: …".
@@ -136,55 +138,56 @@ public enum PreciseEdit {
         var rows: [String] = []
         for region in regions where region.isUsable {
             let text = quoted(region.instruction)
+            let instruction = region.instruction.trimmingCharacters(in: .whitespacesAndNewlines)
             let refClause = region.referenceImageIndex.map { ", using <ref_image_\($0)> as the reference" } ?? ""
+            // Fila «New»: genera `desc` en la caja (añade, sustituye o recolorea). Con imagen de
+            // referencia, el elemento sale de esa imagen (entera) y va a la caja.
+            func newRow(target: PixelRect) -> String {
+                let fromRef = region.referenceImageIndex.map { RowValue.string("ref_image_\($0)") } ?? .null
+                let srcRef: RowValue = region.referenceImageIndex == nil ? .null : .bbox([0, 0, 1000, 1000])
+                return row([
+                    ("id", .string(region.id)),
+                    ("from", fromRef),
+                    ("src_bbox", srcRef),
+                    ("tgt_bbox", .bbox(bbox(target, imageWidth: imageWidth, imageHeight: imageHeight))),
+                    ("desc", .string(instruction)),
+                ])
+            }
             switch region.kind {
             case .edit:
                 let src = region.source!
                 let pos = position(of: src, imageWidth: imageWidth, imageHeight: imageHeight)
                 sentences.append("Apply this edit to the marked area <\(region.id)> in the \(pos)\(refClause): \(text).")
-                rows.append(row([
-                    ("id", .string(region.id)),
-                    ("from", .string("ref_image_0")),
-                    ("src_bbox", .bbox(bbox(src, imageWidth: imageWidth, imageHeight: imageHeight))),
-                ]))
+                rows.append(newRow(target: src))
             case .new:
                 let tgt = region.target!
                 let pos = position(of: tgt, imageWidth: imageWidth, imageHeight: imageHeight)
                 sentences.append("Add a new element in the marked area <\(region.id)> in the \(pos)\(refClause): \(text).")
-                var fields: [(String, RowValue)] = [("id", .string(region.id))]
-                if let ref = region.referenceImageIndex { fields.append(("from", .string("ref_image_\(ref)"))) }
-                fields += [
-                    ("src_bbox", .null),
-                    ("tgt_bbox", .bbox(bbox(tgt, imageWidth: imageWidth, imageHeight: imageHeight))),
-                    ("desc", .string(region.instruction.trimmingCharacters(in: .whitespacesAndNewlines))),
-                    ("kind", .string("new")),
-                ]
-                rows.append(row(fields))
+                rows.append(newRow(target: tgt))
             case .move:
                 let src = region.source!, tgt = region.target!
                 let from = position(of: src, imageWidth: imageWidth, imageHeight: imageHeight)
                 let to = position(of: tgt, imageWidth: imageWidth, imageHeight: imageHeight)
-                let detail = region.instruction.trimmingCharacters(in: .whitespacesAndNewlines)
                 sentences.append("Move the element in the marked area <\(region.id)> from the \(from) to the \(to)"
-                    + (detail.isEmpty ? "." : ": \(quoted(detail))."))
-                var fields: [(String, RowValue)] = [
-                    ("id", .string(region.id)),
-                    ("from", .string("ref_image_0")),
-                    ("src_bbox", .bbox(bbox(src, imageWidth: imageWidth, imageHeight: imageHeight))),
-                    ("tgt_bbox", .bbox(bbox(tgt, imageWidth: imageWidth, imageHeight: imageHeight))),
-                ]
-                if !detail.isEmpty { fields.append(("desc", .string(detail))) }
-                fields.append(("kind", .string("move")))
-                rows.append(row(fields))
-            case .anchor:
-                let src = region.source!
-                let pos = position(of: src, imageWidth: imageWidth, imageHeight: imageHeight)
-                sentences.append("Keep the marked area <\(region.id)> in the \(pos) unchanged.")
+                    + (instruction.isEmpty ? "." : ": \(quoted(instruction))."))
                 rows.append(row([
                     ("id", .string(region.id)),
                     ("from", .string("ref_image_0")),
                     ("src_bbox", .bbox(bbox(src, imageWidth: imageWidth, imageHeight: imageHeight))),
-                    ("kind", .string("anchor")),
+                    ("tgt_bbox", .bbox(bbox(tgt, imageWidth: imageWidth, imageHeight: imageHeight))),
+                    ("desc", .string(instruction.isEmpty ? "The element in this area, moved without changing its appearance." : instruction)),
+                ]))
+            case .anchor:
+                let src = region.source!
+                let pos = position(of: src, imageWidth: imageWidth, imageHeight: imageHeight)
+                sentences.append("Keep the marked area <\(region.id)> in the \(pos) unchanged.")
+                let box = bbox(src, imageWidth: imageWidth, imageHeight: imageHeight)
+                rows.append(row([
+                    ("id", .string(region.id)),
+                    ("from", .string("ref_image_0")),
+                    ("src_bbox", .bbox(box)),
+                    ("tgt_bbox", .bbox(box)),
+                    ("desc", .string(instruction.isEmpty ? "The existing content of this area, kept exactly as it is." : instruction)),
                 ]))
             }
         }

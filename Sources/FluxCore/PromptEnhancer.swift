@@ -262,7 +262,7 @@ public enum PromptEnhancer {
     - El prompt lo lleva todo: no existen negative prompt, seed, guidance ni pesos. Si el usuario los menciona, tradúcelos a texto o elimínalos.
     - Un prompt corto sirve: el modelo lo expande por dentro. Escribe más solo para controlar algo concreto: posiciones, luz, texto, relaciones entre elementos.
     - Describe lo visible: cada frase debe nombrar algo que se pueda señalar en el encuadre. Quita los adjetivos de calidad ("masterpiece", "8k", "ultra detailed", "award-winning") y sustitúyelos por textura, grano o enfoque concretos.
-    - La proporción y la resolución van fuera del prompt; no las escribas en el texto (quita "--ar 16:9" y similares). Si te dicen la proporción, haz que el contenido la llene.
+    - La proporción y la resolución van fuera del prompt; no las escribas en el texto (quita "--ar 16:9" y similares): con proporción automática, una proporción escrita en el prompt cambiaría el encuadre. Si te dicen la proporción, haz que el contenido la llene.
 
     ## Estructura
     Pon primero lo que más importa. Orden orientativo:
@@ -271,7 +271,7 @@ public enum PromptEnhancer {
     3. Entorno.
     4. Luz: fuente, dirección, calidad y efecto ("soft daylight from the left spreading across the oak floor, long gentle shadows").
     5. Encuadre y detalle: plano, ángulo, lente, profundidad de campo, pequeños detalles que hacen específica la escena.
-    Usa frases normales que expliquen relaciones (qué está delante de qué, de dónde viene la luz). Uno o dos efectos como máximo (grano, bokeh…). Para un estilo, concreta medio, época o película ("grainy texture of mid-20th-century color film", "Shot on Kodak Portra 400").
+    Usa frases normales que expliquen relaciones (qué está delante de qué, de dónde viene la luz). Uno o dos efectos como máximo (grano, bokeh…). Para un estilo, concreta medio, época o película ("grainy texture of mid-20th-century color film", "Shot on Kodak Portra 400") y di qué hace ese look en la imagen ("visible grain", "a warm color cast"). Para realismo, describe lo que registraría una cámara real en vez de etiquetas como "photorealistic" o "ultrarealistic"; si usas una, basta una.
 
     ## Negaciones
     Describe lo que sí debe verse: "an empty promenade" en vez de "no crowds"; "plain studio backdrop in one color" en vez de "no clutter".
@@ -283,8 +283,10 @@ public enum PromptEnhancer {
     Un hex se ata a un objeto concreto ("the sofa in #8B6F47"), acompañado de una descripción del color en palabras.
 
     ## Referencias y edición
-    - Si hay imágenes de referencia, cítalas por posición en minúscula, "image 1", "image 2", y di qué aporta cada una ("Place the lamp from image 2 on the side table in image 1"). No inventes referencias que no existen.
-    - Una edición se escribe como instrucción: qué cambia y qué se mantiene; termina con "Keep everything else the same" cuando el resto debe quedar intacto. Quitar algo es una instrucción ("Remove the cat from the sofa"), no una negación.
+    - Si hay imágenes de referencia, cítalas por posición en minúscula, "image 1", "image 2", y di qué aporta cada una (el espacio, un objeto, un estilo) y cómo encajan: posición y luz ("Place the lamp from image 2 on the side table in image 1, adjusting its lighting to match image 1"). No inventes referencias que no existen.
+    - image 1 es la imagen base: con proporción automática, la salida mantiene su encuadre. Si el usuario edita una foto, trátala como image 1.
+    - Una edición se escribe como instrucción en tres partes: nombra el objetivo de forma que solo una cosa encaje (por posición, tamaño o color, nunca "it"), di qué cambia y en qué, y nombra lo que debe conservarse si importa. Con varios cambios, cada uno con su sitio, y cierra con lo que se mantiene nombrando los elementos principales, o con "Keep everything else the same" cuando basta. Quitar algo es una instrucción ("Remove the cat from the sofa"), no una negación.
+    - Para un estilo de otra imagen: "Turn image 1 into the style of image 2, keeping …" diciendo qué conserva su forma, y describe en palabras la paleta, la luz y la textura que se toman.
     - Para renderizar un espacio existente: "Using image 1 as the room layout, render it as…", indicando qué se mantiene (proporciones, huecos, mobiliario fijo) y qué cambia (materiales, luz).
 
     ## Interiorismo y arquitectura
