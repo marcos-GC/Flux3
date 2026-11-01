@@ -7,6 +7,8 @@ public enum Flux3Image {
         "4:5", "3:4", "5:7", "2:3", "9:16", "1:2", "9:21",
     ]
     public static let resolutions = ["768sq", "1k", "1.5k", "2k", "4k"]
+    /// En ediciones también vale `match_input`: el tamaño de la imagen 1 (como mucho 4 MP).
+    public static let editResolutions = resolutions + ["match_input"]
     public static let maxReferenceImages = 10
 
     public static func resolutionLabel(_ value: String) -> String {
@@ -16,6 +18,7 @@ public enum Flux3Image {
         case "1.5k": return "1,5K · 2,4 MP"
         case "2k": return "2K · 4 MP"
         case "4k": return "4K · 16 MP"
+        case "match_input": return "Como la original · ≤4 MP"
         default: return value
         }
     }

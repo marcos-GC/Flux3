@@ -309,7 +309,7 @@ final class AssistantStore: ObservableObject {
             edit.extraReferences = []
             edit.addExtraReferences(Array(urls.dropFirst()))
             edit.manualPrompt = suggestion.prompt
-            if let r = suggestion.resolution, Flux3Image.resolutions.contains(r) { edit.resolution = r }
+            if let r = suggestion.resolution, Flux3Image.editResolutions.contains(r) { edit.resolution = r }
             state.notice = "Prompt del asistente en Editar · «Ver prompt» para revisarlo"
         case .generate:
             state.selectTool(.generate)

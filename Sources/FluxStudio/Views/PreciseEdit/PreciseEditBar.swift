@@ -70,7 +70,7 @@ struct PreciseEditBar: View {
                 .help("Imágenes extra que el modelo puede usar (se citan como ref_image_N)")
 
                 ChipPicker(
-                    icon: "viewfinder", title: "Resolución", options: Flux3Image.resolutions,
+                    icon: "viewfinder", title: "Resolución", options: Flux3Image.editResolutions,
                     selection: $model.resolution, label: { Flux3Image.resolutionLabel($0) }
                 )
                 ChipPicker(
