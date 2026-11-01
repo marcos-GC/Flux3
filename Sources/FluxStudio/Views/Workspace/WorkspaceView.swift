@@ -101,40 +101,49 @@ struct WorkspaceView: View {
     /// y la caja del prompt FIJA en la parte inferior de la ventana.
     private var standardLayout: some View {
         VStack(spacing: 0) {
+            // Zoom y recorte, en horizontal arriba a la derecha.
+            HStack {
+                Spacer()
+                if showsViewerControls {
+                    StageViewerControls(viewer: viewer, imageAspect: focusedAspect,
+                                        canCrop: state.compareURL == nil && !compare)
+                }
+            }
+            .frame(height: 36)
+            .padding(.horizontal, 16)
+            .padding(.top, 10)
+
             GeometryReader { geo in
-                let infoHeight: CGFloat = state.focusedURL == nil ? 0 : 34
-                // A la derecha de la imagen, la columna de zoom y recorte.
-                let sideControls: CGFloat = showsViewerControls ? 88 : 0
+                let infoHeight: CGFloat = state.focusedURL == nil ? 0 : 32
                 let available = CGSize(
-                    width: max(200, geo.size.width - 64 - sideControls),
-                    height: max(120, geo.size.height - infoHeight - 40)
+                    width: max(200, geo.size.width - 64),
+                    height: max(120, geo.size.height - infoHeight - 16)
                 )
                 let stageSize = contentSize.map { fittedSize($0, in: available) }
                     ?? CGSize(width: available.width, height: min(available.height, 320))
 
-                VStack(spacing: 8) {
+                VStack(spacing: 6) {
                     stage
                         .frame(width: stageSize.width, height: stageSize.height)
-                        .overlay(alignment: .topTrailing) {
-                            if showsViewerControls {
-                                StageViewerControls(viewer: viewer, imageAspect: focusedAspect,
-                                                    canCrop: state.compareURL == nil && !compare)
-                                    .alignmentGuide(.trailing) { d in d[.leading] - 10 }
-                            }
-                        }
                     if state.focusedURL != nil {
-                        ImageInfoRow(compare: $compare, showsCompare: showsCompare, canCompare: canCompare)
+                        ImageCaption()
                             .frame(width: max(stageSize.width, min(available.width, 640)))
                             .frame(height: infoHeight)
                     }
                 }
                 .frame(width: geo.size.width, height: geo.size.height)
             }
-            .padding(.top, 24)
-            .padding(.bottom, 12)
+            .padding(.top, 4)
+            .padding(.bottom, 8)
 
-            bar
-                .padding(.bottom, 20)
+            VStack(spacing: 8) {
+                if state.focusedURL != nil {
+                    StudioToolbar(compare: $compare, showsCompare: showsCompare, canCompare: canCompare,
+                                  maxWidth: state.tool == .generate ? 820 : 900)
+                }
+                bar
+            }
+            .padding(.bottom, 20)
         }
     }
 
@@ -368,96 +377,128 @@ private struct NeedsImageBar: View {
 
 // MARK: - Línea de información bajo la imagen
 
-private struct ImageInfoRow: View {
+/// Prompt y modelo de la imagen en grande (las acciones están en la barra de iconos).
+private struct ImageCaption: View {
+    @EnvironmentObject private var state: AppState
+    @EnvironmentObject private var history: HistoryStore
+
+    var body: some View {
+        if let url = state.focusedURL {
+            let record = history.items.first { $0.fileURL == url }?.record
+            VStack(spacing: 1) {
+                Text(record?.prompt ?? url.lastPathComponent)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.textPrimary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .help(record?.prompt ?? url.path)
+                Text([record.map { ToolNames.display($0.model) }, record?.cost.map { "\(formatCredits($0)) créditos" }]
+                    .compactMap { $0 }.joined(separator: " · "))
+                    .font(.system(size: 10))
+                    .foregroundStyle(Theme.textSecondary)
+            }
+            .frame(maxWidth: .infinity)
+        }
+    }
+}
+
+// MARK: - Barra de iconos encima de la caja (igual que en Editar)
+
+private struct StudioToolbar: View {
     @EnvironmentObject private var state: AppState
     @EnvironmentObject private var history: HistoryStore
     @Binding var compare: Bool
     let showsCompare: Bool
     let canCompare: Bool
+    let maxWidth: CGFloat
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 0) {
             if let url = state.focusedURL {
                 let record = history.items.first { $0.fileURL == url }?.record
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(record?.prompt ?? url.lastPathComponent)
-                        .font(.system(size: 12))
-                        .foregroundStyle(Theme.textPrimary)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                        .help(record?.prompt ?? url.path)
-                    Text([record.map { ToolNames.display($0.model) }, record?.cost.map { "\(formatCredits($0)) créditos" }]
-                        .compactMap { $0 }.joined(separator: " · "))
-                        .font(.system(size: 10))
-                        .foregroundStyle(Theme.textSecondary)
-                }
-                Spacer(minLength: 10)
+                let isVideo = VideoModel.isVideo(url)
                 if state.compareURL != nil {
-                    Button { state.swapCompare() } label: {
-                        Chip(icon: "arrow.left.arrow.right", text: "Intercambiar")
+                    ToolIconButton(icon: "arrow.left.arrow.right", help: "Intercambiar: cambiar de lado las dos imágenes") {
+                        state.swapCompare()
                     }
-                    .buttonStyle(.plain)
-                    .help("Cambiar de lado las dos imágenes")
-                    Button { state.compareURL = nil } label: {
-                        Chip(icon: "xmark", text: "Terminar comparación", isActive: true)
+                    ToolIconButton(icon: "xmark.rectangle", help: "Terminar la comparación de las dos imágenes (Esc)", isActive: true) {
+                        state.compareURL = nil
                     }
-                    .buttonStyle(.plain)
                     .keyboardShortcut(.escape, modifiers: [])
-                    .help("Volver a ver una sola imagen (Esc)")
+                    divider
                 }
                 if state.original(of: url) != nil {
-                    Button { state.goToOriginal() } label: {
-                        Chip(icon: "arrow.uturn.backward", text: "Original")
+                    ToolIconButton(icon: "arrow.uturn.backward",
+                                   help: "Original: volver a la imagen antes de editarla (⌘↑). Las ediciones siguen en la tira.") {
+                        state.goToOriginal()
                     }
-                    .buttonStyle(.plain)
                     .keyboardShortcut(.upArrow, modifiers: .command)
-                    .help("Volver a la imagen original, antes de editarla (⌘↑)")
                 }
                 if showsCompare {
-                    Button { compare.toggle() } label: {
-                        Chip(icon: "rectangle.split.2x1", text: "Antes / Después", isActive: compare)
+                    ToolIconButton(icon: "rectangle.split.2x1",
+                                   help: canCompare
+                                       ? "Antes / Después: comparar con la imagen de la que sale este resultado"
+                                       : "Antes / Después: esta imagen no sale de otra. Para comparar dos fotos cualesquiera, ⌘-clic en una miniatura de la tira.",
+                                   isActive: compare) {
+                        compare.toggle()
                     }
-                    .buttonStyle(.plain)
                     .disabled(!canCompare)
-                    .opacity(canCompare ? 1 : 0.45)
-                    .help(canCompare
-                        ? "Comparar con la imagen de la que sale este resultado"
-                        : "Esta imagen no sale de otra, así que no hay «antes». Para comparar dos fotos cualesquiera: ⌘-clic en una miniatura de la tira.")
                 }
-                if VideoModel.isVideo(url) {
+                if state.original(of: url) != nil || showsCompare || state.compareURL != nil {
+                    divider
+                }
+                if isVideo {
                     ForEach([VideoModel.Mode.v2v, .edit, .upscale]) { mode in
-                        Button {
+                        ToolIconButton(icon: mode.icon, help: mode.title) {
                             state.video.mode = mode
                             state.tool = .video
-                        } label: {
-                            Chip(icon: mode.icon, text: mode == .v2v ? "Continuar" : (mode == .edit ? "Editar" : "Escalar"))
                         }
-                        .buttonStyle(.plain)
-                        .help(mode.title)
                     }
-                } else if let record {
-                    Button { state.reuse(record) } label: { Chip(icon: "arrow.counterclockwise", text: "Reutilizar") }
-                        .buttonStyle(.plain)
-                        .help("Volver a poner este prompt y sus parámetros en Generar")
-                }
-                if !VideoModel.isVideo(url) {
-                    Button { state.useAsReference(url) } label: {
-                        Chip(icon: "square.on.square", text: "Como referencia")
+                } else {
+                    if let record {
+                        ToolIconButton(icon: "arrow.counterclockwise",
+                                       help: "Reutilizar: volver a poner este prompt y sus parámetros en Generar") {
+                            state.reuse(record)
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .help("Usar esta imagen como referencia para generar")
-                    Button { state.send(url, to: .video) } label: { Chip(icon: "film", text: "A vídeo") }
-                        .buttonStyle(.plain)
-                        .help("Imagen a vídeo con esta imagen como fotograma inicial")
+                    ToolIconButton(icon: "square.on.square", help: "Como referencia: usar esta imagen como referencia para generar") {
+                        state.useAsReference(url)
+                    }
+                    ToolIconButton(icon: "film", help: "A vídeo: imagen a vídeo con esta imagen como fotograma inicial") {
+                        state.send(url, to: .video)
+                    }
+                    ToolIconButton(icon: "bubble.left.and.text.bubble.right", help: "Enviar al asistente de prompts") {
+                        state.assistant.attach([url])
+                    }
                 }
-                Button { NSWorkspace.shared.activateFileViewerSelecting([url]) } label: { Chip(icon: "folder", text: "Finder") }
-                    .buttonStyle(.plain)
-                Menu { ResultActions(fileURL: url, record: record) } label: { Chip(icon: "ellipsis", text: "Más") }
-                    .menuStyle(.borderlessButton)
-                    .menuIndicator(.hidden)
-                    .fixedSize()
+                divider
+                ToolIconButton(icon: "folder", help: "Mostrar en el Finder") {
+                    NSWorkspace.shared.activateFileViewerSelecting([url])
+                }
+                Menu { ResultActions(fileURL: url, record: record) } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .font(.system(size: 13))
+                        .foregroundStyle(Theme.textPrimary)
+                        .frame(width: 30, height: 28)
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .help("Más acciones")
+                Spacer(minLength: 8)
             }
         }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .frame(maxWidth: .infinity)
+        .surfaceStyle(cornerRadius: 14)
+        // Mismo ancho que la caja de abajo.
+        .frame(maxWidth: maxWidth)
+        .padding(.horizontal, 28)
+    }
+
+    private var divider: some View {
+        Rectangle().fill(Theme.border).frame(width: 1, height: 18).padding(.horizontal, 4)
     }
 }
 
@@ -592,7 +633,7 @@ extension FocusedStage {
     }
 }
 
-/// Columna de zoom y recorte a la derecha de la imagen en grande.
+/// Zoom y recorte de la imagen en grande, en horizontal arriba a la derecha.
 private struct StageViewerControls: View {
     @EnvironmentObject private var state: AppState
     @ObservedObject var viewer: ViewerZoom
@@ -600,17 +641,17 @@ private struct StageViewerControls: View {
     let canCrop: Bool
 
     var body: some View {
-        VStack(spacing: 0) {
+        HStack(spacing: 0) {
             if viewer.isCropping, let url = state.focusedURL {
-                CropActionButtons(viewer: viewer, imageAspect: imageAspect, axis: .vertical) {
+                CropActionButtons(viewer: viewer, imageAspect: imageAspect) {
                     guard let rect = viewer.cropRect else { return }
                     viewer.cancelCrop()
                     state.saveCrop(of: url, rect: rect)
                 }
             } else {
                 ZoomButtons(zoom: $viewer.zoom, pan: $viewer.pan, minZoom: viewer.minZoom,
-                            maxZoom: viewer.maxZoom, axis: .vertical)
-                Rectangle().fill(Theme.border).frame(width: 18, height: 1).padding(.vertical, 4)
+                            maxZoom: viewer.maxZoom)
+                Rectangle().fill(Theme.border).frame(width: 1, height: 18).padding(.horizontal, 4)
                 ToolIconButton(icon: "crop", help: canCrop
                     ? "Recortar: el recorte se guarda como imagen nueva en la tira; la original no cambia"
                     : "Termina la comparación para recortar") {
@@ -619,8 +660,8 @@ private struct StageViewerControls: View {
                 .disabled(!canCrop)
             }
         }
-        .padding(.vertical, 4)
-        .padding(.horizontal, 3)
+        .padding(.vertical, 2)
+        .padding(.horizontal, 6)
         .surfaceStyle(cornerRadius: 12)
     }
 }
