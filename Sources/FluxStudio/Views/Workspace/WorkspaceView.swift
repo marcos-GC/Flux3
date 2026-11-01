@@ -55,6 +55,7 @@ struct WorkspaceView: View {
                 handleDrop(urls, zone: zone)
             })
 
+            AssistantColumn(store: state.assistant)
             Rectangle().fill(Theme.border).frame(width: 1)
             ResultStrip()
                 .frame(width: 128)
@@ -276,6 +277,20 @@ struct WorkspaceView: View {
         case .deblur: state.deblur.sync(with: url)
         case .tryOn: state.tryOn.sync(with: url)
         case .generate, .video, .collage: break
+        }
+    }
+}
+
+/// Panel del Asistente de prompts, entre la imagen y la tira (si está abierto).
+private struct AssistantColumn: View {
+    @ObservedObject var store: AssistantStore
+
+    var body: some View {
+        if store.isOpen {
+            Rectangle().fill(Theme.border).frame(width: 1)
+            AssistantPanel(store: store)
+                .frame(width: 380)
+                .transition(.move(edge: .trailing))
         }
     }
 }

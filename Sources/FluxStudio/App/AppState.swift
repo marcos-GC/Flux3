@@ -139,6 +139,8 @@ final class AppState: ObservableObject {
     let video: VideoModel
     let collage: CollageModel
     let library: PromptLibrary
+    /// Asistente de prompts (chat con Claude en el panel lateral).
+    let assistant: AssistantStore
     private var tasks: [UUID: [Task<Void, Never>]] = [:]
     /// Petición a la que pertenece cada resultado (las variantes de una misma petición).
     private var resultGroups: [URL: UUID] = [:]
@@ -155,6 +157,7 @@ final class AppState: ObservableObject {
         self.video = VideoModel(settings: settings)
         self.collage = CollageModel(settings: settings)
         self.library = PromptLibrary(settings: settings)
+        self.assistant = AssistantStore(settings: settings)
         imageParams.count = settings.defaultImageCount
         imageParams.safety = SafetyTolerance.clamp(settings.defaultSafety, for: .flux3Image)
     }

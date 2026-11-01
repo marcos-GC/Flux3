@@ -37,6 +37,9 @@ struct SidebarView: View {
                 }
             }
 
+            Divider().frame(width: 40).padding(.vertical, 4)
+            AssistantSidebarItem(store: state.assistant)
+
             Spacer()
 
             if state.sessionCredits > 0 {
@@ -76,6 +79,18 @@ struct SidebarView: View {
 
 func formatCredits(_ value: Double) -> String {
     value.formatted(.number.precision(.fractionLength(0...2)).locale(Locale(identifier: "es_ES")))
+}
+
+/// Abre o cierra el panel del Asistente de prompts.
+private struct AssistantSidebarItem: View {
+    @ObservedObject var store: AssistantStore
+
+    var body: some View {
+        SidebarItem(icon: "bubble.left.and.text.bubble.right", title: "Asistente", isSelected: store.isOpen,
+                    help: "Asistente de prompts con Claude: analiza imágenes y escribe prompts de FLUX contigo (⌘L)") {
+            withAnimation(.easeOut(duration: 0.18)) { store.isOpen.toggle() }
+        }
+    }
 }
 
 private struct SidebarItem: View {

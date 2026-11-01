@@ -63,7 +63,7 @@ struct SettingsView: View {
 
                 card {
                     SectionLabel("Mejorar prompts con Claude (opcional)")
-                    Text("El botón «Mejorar» de la caja del prompt usa Claude Haiku para reescribir tu idea siguiendo las guías de FLUX 3. Necesita una API key de Anthropic (console.anthropic.com → API Keys). Cada mejora cuesta décimas de céntimo.")
+                    Text("El botón «Mejorar» de la caja del prompt usa Claude Haiku para reescribir tu idea siguiendo las guías de FLUX 3, y el «Asistente» (⌘L) usa Claude Sonnet u Opus para analizar imágenes y escribir prompts contigo. Necesita una API key de Anthropic (console.anthropic.com → API Keys). Cada mejora cuesta décimas de céntimo.")
                         .font(.system(size: 12))
                         .foregroundStyle(Theme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)

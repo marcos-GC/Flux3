@@ -119,6 +119,20 @@ En **Editar** también está: junto a «Cambio en toda la imagen» y, con la var
 
 Para usarlo, crea una API key en https://console.anthropic.com → API Keys y pégala en **Ajustes → Mejorar prompts con Claude → Guardar en el Llavero**. Pulsa **Probar** para comprobarla. Cada mejora cuesta décimas de céntimo.
 
+### Asistente de prompts (chat con Claude)
+
+Un chat en un panel lateral para los prompts difíciles: quitarle a una imagen el aspecto de IA, llevarla al look de otra, o pulir un prompt que no sale. Se abre con **Asistente** en la barra lateral (o **⌘L**) y usa la misma API key de Anthropic que «Mejorar».
+
+1. **Imágenes:** pulsa **Imagen en grande**, arrastra miniaturas de la tira o del Finder al panel, o clic derecho en una foto → **Enviar al asistente**. Cada una lleva un número (**#1**, **#2**…) y un papel que puedes cambiar: *Imagen a transformar*, *Referencia de estilo*, *Referencia* o *Resultado*. Si no añades ninguna, se usa la que tienes en grande.
+2. **Pide lo que quieras** o usa un atajo: **Quitar aspecto de IA**, **Llevar al estilo de una referencia**, **Mejorar mi prompt**. ↩ envía; ⌥↩ hace salto de línea.
+3. **Prompts con botones:** cada prompt que propone sale en una tarjeta con **Usar en Editar** (abre la imagen a editar con ese prompt ya puesto y las demás como referencias; «Ver prompt» lo enseña), **Usar en Generar** (prompt, referencias en orden, proporción y resolución) y **Copiar**.
+4. **Itera:** genera, pulsa **Imagen en grande** para enseñarle el resultado y dile qué falla. Compara y corrige cambiando una cosa cada vez.
+
+- **Modelo:** **Sonnet** por defecto (rápido y suficiente para casi todo) y **Opus** para casos difíciles, en el selector de arriba del panel.
+- **Lo que sabe de FLUX:** lleva una guía de FLUX 3 Image (la del skill del estudio revisada con la documentación de Black Forest Labs y sus skills oficiales): cómo escribir ediciones, quitar el aspecto de IA, transferir un estilo, citar referencias, texto, colores hex, layouts y parámetros. Puedes añadir notas propias (estilo de la casa, ópticas, trucos) en el menú del reloj → **Notas propias para la guía de FLUX…**, que crea `Asistente/guia-flux-extra.md` en la carpeta de salida; lo que escribas ahí se añade en cada conversación y tiene prioridad.
+- **Conversaciones:** se guardan solas en `Asistente/` dentro de la carpeta de salida; el menú del reloj abre las recientes y el lápiz empieza una nueva.
+- **Coste:** las imágenes se envían reducidas (1568 px) y la guía va en caché, así que una conversación normal con Sonnet cuesta céntimos; Opus cuesta el doble por token. Si un filtro de seguridad de Claude rechaza una petición, se reintenta sola con otro modelo.
+
 ## Dónde se guardan los archivos
 
 Cada resultado se descarga nada más terminar (los enlaces de BFL caducan) en `~/Pictures/FLUX Studio/AAAA-MM-DD/` (en el Finder: **Imágenes → FLUX Studio**). Junto a cada imagen o vídeo hay un `.json` con el prompt, el prompt expandido por el modelo, los parámetros, el identificador de la tarea, el coste y la fecha. La carpeta se puede cambiar en **Ajustes**.

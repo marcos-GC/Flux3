@@ -30,6 +30,13 @@ struct FluxStudioApp: App {
                 Button("Nuevo") { state.requestNew() }
                     .keyboardShortcut("n", modifiers: .command)
             }
+            CommandGroup(after: .toolbar) {
+                Button("Asistente de prompts") {
+                    state.assistant.isOpen.toggle()
+                    if state.assistant.isOpen { state.mode = .generate }
+                }
+                .keyboardShortcut("l", modifiers: .command)
+            }
             CommandGroup(after: .pasteboard) {
                 Divider()
                 Button("Copiar prompt y parámetros") {
