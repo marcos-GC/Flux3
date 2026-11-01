@@ -44,10 +44,11 @@ struct EraseBar: View {
 /// Imagen con la máscara en el escenario (Borrar y Pintar y rellenar).
 struct MaskStage: View {
     @ObservedObject var model: MaskToolModel
+    @ObservedObject var viewer: ViewerZoom
 
     var body: some View {
         if let input = model.input {
-            MaskCanvas(model: model, input: input)
+            MaskCanvas(model: model, viewer: viewer, input: input)
         } else {
             ToolLoadingView(isLoading: model.isLoading, error: model.loadError)
         }
@@ -57,14 +58,18 @@ struct MaskStage: View {
 /// Imagen con la máscara pintada encima (semitransparente).
 private struct MaskCanvas: View {
     @ObservedObject var model: MaskToolModel
+    /// Zoom (⌘ + rueda, pellizco; dos dedos desplazan) y recorte.
+    @ObservedObject var viewer: ViewerZoom
     let input: ToolImage
     @State private var current: MaskStroke?
     @State private var hover: CGPoint?
 
     var body: some View {
         GeometryReader { geo in
-            let size = fittedSize(input.size, in: geo.size)
-            let frame = CGRect(x: (geo.size.width - size.width) / 2, y: (geo.size.height - size.height) / 2,
+            let fitted = fittedSize(input.size, in: geo.size)
+            let size = CGSize(width: fitted.width * viewer.zoom, height: fitted.height * viewer.zoom)
+            let frame = CGRect(x: (geo.size.width - size.width) / 2 + viewer.pan.width,
+                               y: (geo.size.height - size.height) / 2 + viewer.pan.height,
                                width: size.width, height: size.height)
             ZStack(alignment: .topLeading) {
                 Image(nsImage: input.image)
@@ -82,7 +87,7 @@ private struct MaskCanvas: View {
 
                 polygonOverlay(frame: frame)
 
-                if let hover, model.shape == .brush {
+                if let hover, model.shape == .brush, !viewer.isCropping {
                     let r = model.brushRadius * frame.width
                     Circle()
                         .strokeBorder(Color.white, lineWidth: 1.5)
@@ -92,20 +97,28 @@ private struct MaskCanvas: View {
                         .allowsHitTesting(false)
                 }
 
-                Color.clear
-                    .frame(width: frame.width, height: frame.height)
-                    .contentShape(Rectangle())
-                    .offset(x: frame.minX, y: frame.minY)
-                    .gesture(activeGesture(frame: frame))
-                    .onContinuousHover(coordinateSpace: .named("mask")) { phase in
-                        switch phase {
-                        case .active(let p): hover = p
-                        case .ended: hover = nil
+                if viewer.isCropping {
+                    CropOverlay(viewer: viewer, frame: frame, space: "mask",
+                                imageAspect: input.size.height > 0 ? input.size.width / input.size.height : 1)
+                } else {
+                    Color.clear
+                        .frame(width: frame.width, height: frame.height)
+                        .contentShape(Rectangle())
+                        .offset(x: frame.minX, y: frame.minY)
+                        .gesture(activeGesture(frame: frame))
+                        .onContinuousHover(coordinateSpace: .named("mask")) { phase in
+                            switch phase {
+                            case .active(let p): hover = p
+                            case .ended: hover = nil
+                            }
                         }
-                    }
+                }
             }
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
             .coordinateSpace(name: "mask")
+            .clipped()
         }
+        .zoomEvents(viewer)
     }
 
     @ViewBuilder

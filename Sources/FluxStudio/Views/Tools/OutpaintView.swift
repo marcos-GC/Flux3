@@ -49,10 +49,11 @@ struct OutpaintBar: View {
 /// Lienzo de Ampliar en el escenario.
 struct OutpaintStage: View {
     @ObservedObject var model: OutpaintModel
+    @ObservedObject var viewer: ViewerZoom
 
     var body: some View {
         if let input = model.input {
-            OutpaintCanvas(model: model, input: input)
+            OutpaintCanvas(model: model, viewer: viewer, input: input)
         } else {
             ToolLoadingView(isLoading: model.isLoading, error: model.loadError)
         }
@@ -96,16 +97,21 @@ private struct SizeField: View {
 /// Lienzo con la imagen colocada dentro; arrastrarla fija reference_offset_x/y.
 struct OutpaintCanvas: View {
     @ObservedObject var model: OutpaintModel
+    /// Zoom (⌘ + rueda, pellizco; dos dedos desplazan) y recorte de la imagen de partida.
+    @ObservedObject var viewer: ViewerZoom
     let input: ToolImage
     @State private var dragStart: CGPoint?
 
     var body: some View {
         GeometryReader { geo in
             let canvas = model.canvasSize
-            let scale = min((geo.size.width - 20) / canvas.width, (geo.size.height - 40) / canvas.height)
+            let scale = min((geo.size.width - 20) / canvas.width, (geo.size.height - 40) / canvas.height) * viewer.zoom
             let cw = canvas.width * scale, ch = canvas.height * scale
-            let origin = CGPoint(x: (geo.size.width - cw) / 2, y: (geo.size.height - ch - 20) / 2)
+            let origin = CGPoint(x: (geo.size.width - cw) / 2 + viewer.pan.width,
+                                 y: (geo.size.height - ch - 20) / 2 + viewer.pan.height)
             let offset = model.effectiveOffset
+            let imageFrame = CGRect(x: origin.x + offset.x * scale, y: origin.y + offset.y * scale,
+                                    width: input.size.width * scale, height: input.size.height * scale)
 
             ZStack(alignment: .topLeading) {
                 // Lienzo
@@ -133,14 +139,26 @@ struct OutpaintCanvas: View {
                             .onEnded { _ in dragStart = nil }
                     )
                     .help("Arrastra la imagen para colocarla dentro del lienzo")
+                    .allowsHitTesting(!viewer.isCropping)
+
+                if viewer.isCropping {
+                    // Se recorta la imagen de partida (no el lienzo ampliado).
+                    CropOverlay(viewer: viewer, frame: imageFrame, space: "outpaint",
+                                imageAspect: input.size.height > 0 ? input.size.width / input.size.height : 1)
+                }
 
                 Text("Lienzo \(Int(canvas.width)) × \(Int(canvas.height)) px · imagen \(Int(input.size.width)) × \(Int(input.size.height)) px"
                      + (model.offset == nil ? " · centrada" : " · posición \(Int(offset.x)), \(Int(offset.y))"))
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(Theme.textSecondary)
                     .frame(width: geo.size.width)
-                    .offset(y: origin.y + ch + 8)
+                    .offset(y: min(origin.y + ch + 8, geo.size.height - 16))
+                    .allowsHitTesting(false)
             }
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
+            .coordinateSpace(name: "outpaint")
+            .clipped()
         }
+        .zoomEvents(viewer)
     }
 }

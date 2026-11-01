@@ -184,19 +184,11 @@ struct WorkspaceView: View {
         showsCompare && state.parent(of: state.focusedURL) != nil
     }
 
-    /// La imagen se ve en `FocusedStage` (no en el lienzo de Borrar, Rellenar o Ampliar).
-    private var showsFocusedStage: Bool {
-        if state.compareURL != nil || compare { return true }
-        switch state.tool {
-        case .erase, .fill, .outpaint: return state.focusedURL == nil
-        default: return true
-        }
-    }
-
-    /// Zoom y recorte a la derecha de la imagen.
+    /// Zoom y recorte a la derecha de la imagen (en todas las herramientas, también en los
+    /// lienzos de Borrar, Rellenar y Ampliar).
     private var showsViewerControls: Bool {
-        guard let url = state.focusedURL, !VideoModel.isVideo(url) else { return false }
-        return showsFocusedStage
+        guard let url = state.focusedURL else { return false }
+        return !VideoModel.isVideo(url)
     }
 
     private var focusedAspect: CGFloat {
@@ -224,11 +216,11 @@ struct WorkspaceView: View {
     private var stage: some View {
         switch state.compareURL != nil || compare ? WorkspaceTool.generate : state.tool {
         case .erase where state.focusedURL != nil:
-            MaskStage(model: state.erase)
+            MaskStage(model: state.erase, viewer: viewer)
         case .fill where state.focusedURL != nil:
-            MaskStage(model: state.fill)
+            MaskStage(model: state.fill, viewer: viewer)
         case .outpaint where state.focusedURL != nil:
-            OutpaintStage(model: state.outpaint)
+            OutpaintStage(model: state.outpaint, viewer: viewer)
         default:
             FocusedStage(compare: compare, viewer: viewer)
         }
