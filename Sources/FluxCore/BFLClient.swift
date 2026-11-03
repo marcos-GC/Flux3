@@ -89,7 +89,7 @@ public final class BFLClient: @unchecked Sendable {
             } catch let error as URLError where error.code != .cancelled {
                 // Cortes de red puntuales: reintentar unas cuantas veces.
                 networkFailures += 1
-                if networkFailures >= 6 { throw BFLError.network(Self.describe(error)) }
+                if networkFailures >= 6 { throw BFLError.network(Self.describe(error, host: pollingURL.host)) }
                 waitSeconds = min(waitSeconds * 2, 30)
             }
             try await Self.sleep(waitSeconds)
@@ -152,7 +152,7 @@ public final class BFLClient: @unchecked Sendable {
             } catch let error as URLError {
                 let retry = idempotent ? Self.isTransient(error) : Self.failedBeforeSending(error)
                 guard retry, attempt < maxAttempts else {
-                    throw BFLError.network(Self.describe(error))
+                    throw BFLError.network(Self.describe(error, host: request.url?.host))
                 }
                 try await Self.sleep(Double(attempt)) // 1 s, 2 s…
                 attempt += 1
@@ -182,9 +182,10 @@ public final class BFLClient: @unchecked Sendable {
     }
 
     /// Texto claro para el usuario según el tipo de fallo de red.
-    static func describe(_ error: URLError) -> String {
-        let base = error.localizedDescription
+    static func describe(_ error: URLError, host: String? = nil) -> String {
+        var base = error.localizedDescription
             .trimmingCharacters(in: CharacterSet(charactersIn: ". ").union(.whitespacesAndNewlines))
+        if let host, !host.isEmpty { base += " (servidor \(host), código \(error.errorCode))" }
         switch error.code {
         case .secureConnectionFailed, .serverCertificateUntrusted, .serverCertificateHasBadDate,
              .serverCertificateNotYetValid, .serverCertificateHasUnknownRoot, .clientCertificateRejected:
