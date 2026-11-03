@@ -150,3 +150,65 @@ final class BFLClientTests: XCTestCase {
         }
     }
 }
+
+/// Servidor falso que falla con un error de red las primeras `failures` veces.
+final class FlakyURLProtocol: URLProtocol {
+    nonisolated(unsafe) static var failures = 0
+    nonisolated(unsafe) static var code: URLError.Code = .secureConnectionFailed
+    nonisolated(unsafe) static var calls = 0
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        Self.calls += 1
+        if Self.calls <= Self.failures {
+            client?.urlProtocol(self, didFailWithError: URLError(Self.code))
+            return
+        }
+        let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil,
+                                       headerFields: ["Content-Type": "application/json"])!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data(#"{"id":"t1","polling_url":"https://api.eu.bfl.ai/v1/get_result?id=t1"}"#.utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
+}
+
+final class BFLClientRetryTests: XCTestCase {
+    private func makeClient() -> BFLClient {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [FlakyURLProtocol.self]
+        return BFLClient(apiKey: "KEY", region: .eu, session: URLSession(configuration: config))
+    }
+
+    private struct Body: Encodable { let prompt = "x" }
+
+    override func setUp() { FlakyURLProtocol.calls = 0 }
+
+    func testSubmitRetriesAfterTLSFailure() async throws {
+        FlakyURLProtocol.failures = 1
+        FlakyURLProtocol.code = .secureConnectionFailed
+        let response = try await makeClient().submit(.flux3Image, body: Body())
+        XCTAssertEqual(response.id, "t1")
+        XCTAssertEqual(FlakyURLProtocol.calls, 2)
+    }
+
+    func testSubmitDoesNotRetryWhenConnectionLostMidRequest() async {
+        FlakyURLProtocol.failures = 1
+        FlakyURLProtocol.code = .networkConnectionLost
+        do {
+            _ = try await makeClient().submit(.flux3Image, body: Body())
+            XCTFail("debería fallar")
+        } catch {
+            XCTAssertEqual(FlakyURLProtocol.calls, 1) // un POST que pudo llegar no se repite
+        }
+    }
+
+    func testTLSErrorMessageExplainsLikelyCauses() {
+        let text = BFLClient.describe(URLError(.secureConnectionFailed))
+        XCTAssertTrue(text.contains("VPN"))
+        XCTAssertFalse(text.contains(".."))
+    }
+}

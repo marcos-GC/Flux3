@@ -60,7 +60,7 @@ public enum BFLError: LocalizedError, Equatable, Sendable {
         case .invalidResponse(let what):
             return "Respuesta inesperada de BFL: \(what)"
         case .network(let what):
-            return "Problema de conexión: \(what). Comprueba tu Internet."
+            return "Problema de conexión: \(what)."
         case .noResult:
             return "BFL ha terminado pero no ha devuelto ningún archivo."
         }

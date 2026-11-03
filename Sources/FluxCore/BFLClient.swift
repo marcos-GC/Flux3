@@ -89,7 +89,7 @@ public final class BFLClient: @unchecked Sendable {
             } catch let error as URLError where error.code != .cancelled {
                 // Cortes de red puntuales: reintentar unas cuantas veces.
                 networkFailures += 1
-                if networkFailures >= 6 { throw BFLError.network(error.localizedDescription) }
+                if networkFailures >= 6 { throw BFLError.network(Self.describe(error)) }
                 waitSeconds = min(waitSeconds * 2, 30)
             }
             try await Self.sleep(waitSeconds)
@@ -138,13 +138,62 @@ public final class BFLClient: @unchecked Sendable {
 
     // MARK: - Utilidades
 
-    private func perform(_ request: URLRequest) async throws -> (Data, URLResponse) {
-        do {
-            return try await session.data(for: request)
-        } catch let error as URLError where error.code == .cancelled {
-            throw CancellationError()
-        } catch let error as URLError {
-            throw BFLError.network(error.localizedDescription)
+    /// Lanza la petición y reintenta los fallos de red pasajeros.
+    /// Un POST solo se repite si el fallo ocurrió antes de que la petición saliera
+    /// (conexión o negociación TLS), así nunca se crea ni se cobra una tarea dos veces.
+    private func perform(_ request: URLRequest, maxAttempts: Int = 3) async throws -> (Data, URLResponse) {
+        let idempotent = (request.httpMethod ?? "GET").uppercased() == "GET"
+        var attempt = 1
+        while true {
+            do {
+                return try await session.data(for: request)
+            } catch let error as URLError where error.code == .cancelled {
+                throw CancellationError()
+            } catch let error as URLError {
+                let retry = idempotent ? Self.isTransient(error) : Self.failedBeforeSending(error)
+                guard retry, attempt < maxAttempts else {
+                    throw BFLError.network(Self.describe(error))
+                }
+                try await Self.sleep(Double(attempt)) // 1 s, 2 s…
+                attempt += 1
+            }
+        }
+    }
+
+    /// Fallos en los que la petición no ha llegado a enviarse: es seguro repetir incluso un POST.
+    static func failedBeforeSending(_ error: URLError) -> Bool {
+        switch error.code {
+        case .secureConnectionFailed, .cannotConnectToHost, .cannotFindHost, .dnsLookupFailed:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Fallos pasajeros que merece la pena reintentar en peticiones sin efectos (GET).
+    static func isTransient(_ error: URLError) -> Bool {
+        if failedBeforeSending(error) { return true }
+        switch error.code {
+        case .networkConnectionLost, .timedOut, .notConnectedToInternet:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Texto claro para el usuario según el tipo de fallo de red.
+    static func describe(_ error: URLError) -> String {
+        let base = error.localizedDescription
+            .trimmingCharacters(in: CharacterSet(charactersIn: ". ").union(.whitespacesAndNewlines))
+        switch error.code {
+        case .secureConnectionFailed, .serverCertificateUntrusted, .serverCertificateHasBadDate,
+             .serverCertificateNotYetValid, .serverCertificateHasUnknownRoot, .clientCertificateRejected:
+            return base + ". No se pudo establecer una conexión segura con BFL tras varios intentos. "
+                + "Suele deberse a una VPN, un proxy, un antivirus o cortafuegos que inspecciona HTTPS, "
+                + "una Wi-Fi pública o de empresa, o a que la fecha y hora del Mac no son correctas. "
+                + "Prueba otra red (p. ej. compartir datos del móvil) o desactiva la VPN y vuelve a intentarlo"
+        default:
+            return base + ". Comprueba tu Internet"
         }
     }
 
