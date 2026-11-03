@@ -104,6 +104,10 @@ struct RegionInspector: View {
                 referenceRow
             }
 
+            if region.kind != .move {
+                duplicateRow
+            }
+
             if model.isTooSmall(region) {
                 Label("Caja muy pequeña: los elementos de unos 40×25 px suelen fallar.", systemImage: "exclamationmark.triangle")
                     .font(.system(size: 11))
@@ -114,6 +118,28 @@ struct RegionInspector: View {
         .padding(14)
         .surfaceStyle(cornerRadius: 14)
         .onAppear { if region.instruction.isEmpty && region.kind != .anchor { focused = true } }
+    }
+
+    /// Duplicar la caja: la misma instrucción y la misma referencia en varios sitios.
+    private var duplicateRow: some View {
+        HStack(spacing: 8) {
+            Button { model.duplicateBox(of: region.id) } label: {
+                Label("Duplicar caja", systemImage: "plus.square.on.square")
+                    .font(.system(size: 12, weight: .medium))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Theme.textPrimary)
+            .help("Añade otra caja con la misma instrucción y la misma referencia; arrástrala a su sitio (⌘D)")
+            Spacer()
+            if !region.copies.isEmpty {
+                Text("\(region.copies.count + 1) cajas")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.textSecondary)
+                Button("Quitar copias") { model.update(region.id) { $0.copies = [] } }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11, weight: .medium))
+            }
+        }
     }
 
     @ViewBuilder
