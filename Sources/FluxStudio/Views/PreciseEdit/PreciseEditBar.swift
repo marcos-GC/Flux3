@@ -67,7 +67,13 @@ struct PreciseEditBar: View {
                     Chip(icon: "photo.badge.plus", text: "Añadir referencia")
                 }
                 .buttonStyle(.plain)
-                .help("Imágenes extra que el modelo puede usar (se citan como ref_image_N)")
+                .help("Imágenes extra que el modelo puede usar (se citan como ref_image_N). También puedes arrastrarlas aquí desde la tira")
+                .dropDestination(for: URL.self) { urls, _ in
+                    let images = urls.filter(ReferenceImage.isSupported)
+                    guard !images.isEmpty else { return false }
+                    model.addExtraReferences(images)
+                    return true
+                }
 
                 ChipPicker(
                     icon: "viewfinder", title: "Resolución", options: Flux3Image.editResolutions,
