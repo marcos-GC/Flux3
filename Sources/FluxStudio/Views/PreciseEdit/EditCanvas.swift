@@ -88,12 +88,29 @@ struct EditCanvas: View {
                 rect: rectBinding(region.id, target: false),
                 layout: layout,
                 label: "\(index + 1)",
-                caption: region.kind == .new ? "Nuevo: \(region.displayText)" : region.displayText,
+                caption: (region.kind == .new ? "Nuevo: \(region.displayText)" : region.displayText)
+                    + (region.copies.isEmpty || region.kind == .move ? "" : " ×\(region.copies.count + 1)"),
                 style: region.kind == .anchor ? .anchor : .primary,
                 color: Theme.regionColor(index, kind: region.kind),
                 selected: selected,
                 onDragging: { model.isDraggingBox = $0 }
             ) { model.selectedRegionID = region.id }
+
+            if region.kind != .move {
+                ForEach(Array(region.copies.indices), id: \.self) { copy in
+                    BoxEditor(
+                        rect: copyBinding(region.id, copy),
+                        layout: layout,
+                        label: "\(index + 1)",
+                        caption: "Copia \(copy + 2)",
+                        style: region.kind == .anchor ? .anchor : .primary,
+                        color: Theme.regionColor(index, kind: region.kind),
+                        selected: selected,
+                        onDragging: { model.isDraggingBox = $0 },
+                        onDelete: { model.removeCopy(copy, of: region.id) }
+                    ) { model.selectedRegionID = region.id }
+                }
+            }
 
             if region.kind == .move, region.target != nil {
                 BoxEditor(
@@ -119,6 +136,21 @@ struct EditCanvas: View {
             set: { newValue in
                 model.update(id) { region in
                     if target { region.target = newValue } else { region.rect = newValue }
+                }
+            }
+        )
+    }
+
+    private func copyBinding(_ id: UUID, _ copy: Int) -> Binding<CGRect> {
+        Binding(
+            get: {
+                guard let region = model.regions.first(where: { $0.id == id }),
+                      region.copies.indices.contains(copy) else { return .zero }
+                return region.copies[copy]
+            },
+            set: { newValue in
+                model.update(id) { region in
+                    if region.copies.indices.contains(copy) { region.copies[copy] = newValue }
                 }
             }
         )
@@ -189,6 +221,15 @@ struct EditCanvas: View {
             model.spaceHeld = false
             NSCursor.arrow.set()
             return true
+        case .keyDown where event.modifierFlags.intersection([.command, .shift, .option, .control]) == .command
+            && event.charactersIgnoringModifiers?.lowercased() == "d":
+            // ⌘D: duplicar la caja de la región seleccionada (misma instrucción y referencia).
+            if let id = model.selectedRegionID,
+               model.regions.first(where: { $0.id == id })?.kind != .move {
+                model.duplicateBox(of: id)
+                return true
+            }
+            return false
         case .keyDown where (event.keyCode == 51 || event.keyCode == 117) && !editingText:
             // Borrar la región seleccionada con ⌫ / Supr.
             if let id = model.selectedRegionID { model.removeRegion(id); return true }
@@ -266,6 +307,8 @@ struct BoxEditor: View {
     var color: Color = Theme.region
     let selected: Bool
     var onDragging: (Bool) -> Void = { _ in }
+    /// Si existe, la etiqueta lleva una ✕ para quitar esta caja (copias de una región).
+    var onDelete: (() -> Void)? = nil
     let onSelect: () -> Void
 
     /// Caja al empezar el gesto.
@@ -319,6 +362,15 @@ struct BoxEditor: View {
                     .foregroundStyle(Theme.textPrimary)
                     .lineLimit(1)
                     .frame(maxWidth: 220, alignment: .leading)
+                if selected, let onDelete {
+                    Button(action: onDelete) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(Theme.textSecondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Quitar esta copia")
+                }
             }
             .padding(.trailing, 7)
             .padding(2)

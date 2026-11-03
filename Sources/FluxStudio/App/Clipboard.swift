@@ -102,6 +102,15 @@ enum Clipboard {
             guard hasImage else { return false }
             let urls = imageURLs(saveFolder: state.settings.outputFolder)
             guard !urls.isEmpty else { return false }
+            // En Editar, con la tarjeta de una región abierta, lo pegado es la referencia de esa región.
+            if state.tool == .edit && state.mode == .generate && state.compareURL == nil,
+               state.preciseEdit.showRegions,
+               let id = state.preciseEdit.selectedRegionID,
+               let region = state.preciseEdit.regions.first(where: { $0.id == id }),
+               region.kind != .anchor {
+                state.preciseEdit.setRegionReference(urls[0], for: id)
+                return true
+            }
             // En el collage, lo pegado se añade directamente como objeto.
             if state.tool == .collage && state.mode == .generate && state.compareURL == nil {
                 state.collage.add(urls)

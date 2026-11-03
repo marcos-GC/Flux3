@@ -52,10 +52,14 @@ public struct EditRegionSpec: Sendable, Equatable {
     public var instruction: String
     /// Posición en `images` de la imagen de referencia de esta región (1, 2…), o nil.
     public var referenceImageIndex: Int?
+    /// Cajas duplicadas: la misma instrucción (y la misma referencia) en otros sitios.
+    /// Valen para Editar, Nuevo y Proteger; en Mover se ignoran.
+    public var copies: [PixelRect]
 
     public init(number: Int, kind: RegionKind = .edit, source: PixelRect? = nil, target: PixelRect? = nil,
-                instruction: String, referenceImageIndex: Int? = nil) {
+                instruction: String, referenceImageIndex: Int? = nil, copies: [PixelRect] = []) {
         self.number = number
+        self.copies = copies
         self.kind = kind
         self.source = source
         self.target = target
@@ -64,6 +68,9 @@ public struct EditRegionSpec: Sendable, Equatable {
     }
 
     public var id: String { "region_\(number)" }
+
+    /// Identificador de cada caja: la principal es `region_N` y las copias `region_N_2`, `region_N_3`…
+    public func boxID(_ index: Int) -> String { index == 0 ? id : "\(id)_\(index + 1)" }
 
     /// Si la región aporta algo al prompt (una región de edición sin instrucción no aporta nada).
     public var isUsable: Bool {
@@ -142,28 +149,44 @@ public enum PreciseEdit {
             let refClause = region.referenceImageIndex.map { ", using <ref_image_\($0)> as the reference" } ?? ""
             // Fila «New»: genera `desc` en la caja (añade, sustituye o recolorea). Con imagen de
             // referencia, el elemento sale de esa imagen (entera) y va a la caja.
-            func newRow(target: PixelRect) -> String {
+            func newRow(id: String, target: PixelRect) -> String {
                 let fromRef = region.referenceImageIndex.map { RowValue.string("ref_image_\($0)") } ?? .null
                 let srcRef: RowValue = region.referenceImageIndex == nil ? .null : .bbox([0, 0, 1000, 1000])
                 return row([
-                    ("id", .string(region.id)),
+                    ("id", .string(id)),
                     ("from", fromRef),
                     ("src_bbox", srcRef),
                     ("tgt_bbox", .bbox(bbox(target, imageWidth: imageWidth, imageHeight: imageHeight))),
                     ("desc", .string(instruction)),
                 ])
             }
+            // Cajas principales más las duplicadas (no en Mover).
+            func boxes(_ main: PixelRect) -> [(id: String, rect: PixelRect)] {
+                ([main] + region.copies).enumerated().map { (id: region.boxID($0.offset), rect: $0.element) }
+            }
+            // «<region_1> in the upper left, <region_1_2> in the lower right and <region_1_3> in …»
+            func areas(_ list: [(id: String, rect: PixelRect)]) -> String {
+                let parts = list.map { "<\($0.id)> in the \(position(of: $0.rect, imageWidth: imageWidth, imageHeight: imageHeight))" }
+                guard parts.count > 1 else { return parts.first ?? "" }
+                return parts.dropLast().joined(separator: ", ") + " and " + parts.last!
+            }
             switch region.kind {
             case .edit:
-                let src = region.source!
-                let pos = position(of: src, imageWidth: imageWidth, imageHeight: imageHeight)
-                sentences.append("Apply this edit to the marked area <\(region.id)> in the \(pos)\(refClause): \(text).")
-                rows.append(newRow(target: src))
+                let list = boxes(region.source!)
+                if list.count == 1 {
+                    sentences.append("Apply this edit to the marked area \(areas(list))\(refClause): \(text).")
+                } else {
+                    sentences.append("Apply this same edit to each of the marked areas \(areas(list))\(refClause): \(text).")
+                }
+                for box in list { rows.append(newRow(id: box.id, target: box.rect)) }
             case .new:
-                let tgt = region.target!
-                let pos = position(of: tgt, imageWidth: imageWidth, imageHeight: imageHeight)
-                sentences.append("Add a new element in the marked area <\(region.id)> in the \(pos)\(refClause): \(text).")
-                rows.append(newRow(target: tgt))
+                let list = boxes(region.target!)
+                if list.count == 1 {
+                    sentences.append("Add a new element in the marked area \(areas(list))\(refClause): \(text).")
+                } else {
+                    sentences.append("Add the same new element in each of the marked areas \(areas(list))\(refClause): \(text).")
+                }
+                for box in list { rows.append(newRow(id: box.id, target: box.rect)) }
             case .move:
                 let src = region.source!, tgt = region.target!
                 let from = position(of: src, imageWidth: imageWidth, imageHeight: imageHeight)
@@ -178,17 +201,22 @@ public enum PreciseEdit {
                     ("desc", .string(instruction.isEmpty ? "The element in this area, moved without changing its appearance." : instruction)),
                 ]))
             case .anchor:
-                let src = region.source!
-                let pos = position(of: src, imageWidth: imageWidth, imageHeight: imageHeight)
-                sentences.append("Keep the marked area <\(region.id)> in the \(pos) unchanged.")
-                let box = bbox(src, imageWidth: imageWidth, imageHeight: imageHeight)
-                rows.append(row([
-                    ("id", .string(region.id)),
-                    ("from", .string("ref_image_0")),
-                    ("src_bbox", .bbox(box)),
-                    ("tgt_bbox", .bbox(box)),
-                    ("desc", .string(instruction.isEmpty ? "The existing content of this area, kept exactly as it is." : instruction)),
-                ]))
+                let list = boxes(region.source!)
+                if list.count == 1 {
+                    sentences.append("Keep the marked area \(areas(list)) unchanged.")
+                } else {
+                    sentences.append("Keep the marked areas \(areas(list)) unchanged.")
+                }
+                for item in list {
+                    let box = bbox(item.rect, imageWidth: imageWidth, imageHeight: imageHeight)
+                    rows.append(row([
+                        ("id", .string(item.id)),
+                        ("from", .string("ref_image_0")),
+                        ("src_bbox", .bbox(box)),
+                        ("tgt_bbox", .bbox(box)),
+                        ("desc", .string(instruction.isEmpty ? "The existing content of this area, kept exactly as it is." : instruction)),
+                    ]))
+                }
             }
         }
 

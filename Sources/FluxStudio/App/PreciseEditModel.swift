@@ -32,6 +32,9 @@ struct RegionDraft: Identifiable, Equatable {
     var rect: CGRect
     /// Caja destino en el modo Mover.
     var target: CGRect?
+    /// Cajas duplicadas: la misma instrucción y la misma referencia en otros sitios
+    /// (p. ej. el mismo aplique en varias paredes). No se usan en Mover.
+    var copies: [CGRect] = []
     var instruction = ""
     var reference: EditReference?
 
@@ -182,6 +185,35 @@ final class PreciseEditModel: ObservableObject {
         addRegion(CGRect(x: 0.35 + offset, y: 0.35 + offset, width: 0.3, height: 0.3))
     }
 
+    /// Duplica la caja de una región: añade otra caja igual al lado de la última, con la
+    /// misma instrucción y la misma referencia (la referencia se envía una sola vez).
+    func duplicateBox(of id: UUID) {
+        update(id) { region in
+            guard region.kind != .move else { return }
+            let last = region.copies.last ?? region.rect
+            let gap: CGFloat = 0.02
+            var next = last
+            if last.maxX + gap + last.width <= 1 {
+                next.origin.x = last.maxX + gap
+            } else if last.maxY + gap + last.height <= 1 {
+                next.origin.x = region.rect.minX
+                next.origin.y = last.maxY + gap
+            } else {
+                next.origin.x = last.minX - 0.04
+                next.origin.y = last.minY + 0.04
+            }
+            region.copies.append(next.clampedToUnit)
+        }
+        selectedRegionID = id
+    }
+
+    func removeCopy(_ index: Int, of id: UUID) {
+        update(id) { region in
+            guard region.copies.indices.contains(index) else { return }
+            region.copies.remove(at: index)
+        }
+    }
+
     func clearRegions() {
         regions.removeAll()
         selectedRegionID = nil
@@ -205,7 +237,7 @@ final class PreciseEditModel: ObservableObject {
                 t.origin.x = min(1 - t.width, t.origin.x + max(0.1, t.width * 0.6))
                 region.target = t.clampedToUnit
             }
-            if kind != .move { region.target = nil }
+            if kind != .move { region.target = nil } else { region.copies = [] }
         }
     }
 
@@ -221,6 +253,7 @@ final class PreciseEditModel: ObservableObject {
 
     func isTooSmall(_ region: RegionDraft) -> Bool {
         PreciseEdit.isTooSmall(pixelRect(region.rect)) || (region.target.map { PreciseEdit.isTooSmall(pixelRect($0)) } ?? false)
+            || region.copies.contains { PreciseEdit.isTooSmall(pixelRect($0)) }
     }
 
     // MARK: - Referencias
@@ -280,17 +313,20 @@ final class PreciseEditModel: ObservableObject {
         let layout = referenceLayout
         return regions.enumerated().map { index, region in
             let primary = pixelRect(region.rect)
+            let copies = region.copies.map(pixelRect)
             switch region.kind {
             case .new:
                 return EditRegionSpec(number: index + 1, kind: .new, target: primary,
-                                      instruction: region.instruction, referenceImageIndex: layout.regionIndex[region.id])
+                                      instruction: region.instruction, referenceImageIndex: layout.regionIndex[region.id],
+                                      copies: copies)
             case .move:
                 return EditRegionSpec(number: index + 1, kind: .move, source: primary,
                                       target: region.target.map(pixelRect), instruction: region.instruction,
                                       referenceImageIndex: layout.regionIndex[region.id])
             case .edit, .anchor:
                 return EditRegionSpec(number: index + 1, kind: region.kind, source: primary,
-                                      instruction: region.instruction, referenceImageIndex: layout.regionIndex[region.id])
+                                      instruction: region.instruction, referenceImageIndex: layout.regionIndex[region.id],
+                                      copies: copies)
             }
         }
     }
@@ -312,7 +348,8 @@ final class PreciseEditModel: ObservableObject {
         let global = globalInstruction.trimmingCharacters(in: .whitespacesAndNewlines)
         if !global.isEmpty { parts.append(global) }
         for (i, r) in regions.enumerated() {
-            parts.append("\(i + 1) [\(r.kind.spanishName)]: \(r.displayText)")
+            let times = r.copies.isEmpty ? "" : " ×\(r.copies.count + 1)"
+            parts.append("\(i + 1) [\(r.kind.spanishName)\(times)]: \(r.displayText)")
         }
         return parts.joined(separator: " · ")
     }

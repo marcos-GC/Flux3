@@ -7,6 +7,8 @@ struct RegionInspector: View {
     @EnvironmentObject private var model: PreciseEditModel
     let region: RegionDraft
     @FocusState private var focused: Bool
+    /// Hay una imagen arrastrada encima de la tarjeta.
+    @State private var isDropTarget = false
 
     private var number: Int { model.number(of: region.id) }
 
@@ -104,6 +106,10 @@ struct RegionInspector: View {
                 referenceRow
             }
 
+            if region.kind != .move {
+                duplicateRow
+            }
+
             if model.isTooSmall(region) {
                 Label("Caja muy pequeña: los elementos de unos 40×25 px suelen fallar.", systemImage: "exclamationmark.triangle")
                     .font(.system(size: 11))
@@ -113,7 +119,43 @@ struct RegionInspector: View {
         }
         .padding(14)
         .surfaceStyle(cornerRadius: 14)
+        .overlay {
+            if isDropTarget {
+                RoundedRectangle(cornerRadius: 14)
+                    .strokeBorder(Theme.region, style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
+                    .allowsHitTesting(false)
+            }
+        }
+        // Arrastrar una imagen (de la tira, del Historial o del Finder) a la tarjeta la pone
+        // como referencia de esta región, igual que el botón.
+        .dropDestination(for: URL.self) { urls, _ in
+            guard region.kind != .anchor, let url = urls.first(where: ReferenceImage.isSupported) else { return false }
+            model.setRegionReference(url, for: region.id)
+            return true
+        } isTargeted: { isDropTarget = $0 && region.kind != .anchor }
         .onAppear { if region.instruction.isEmpty && region.kind != .anchor { focused = true } }
+    }
+
+    /// Duplicar la caja: la misma instrucción y la misma referencia en varios sitios.
+    private var duplicateRow: some View {
+        HStack(spacing: 8) {
+            Button { model.duplicateBox(of: region.id) } label: {
+                Label("Duplicar caja", systemImage: "plus.square.on.square")
+                    .font(.system(size: 12, weight: .medium))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Theme.textPrimary)
+            .help("Añade otra caja con la misma instrucción y la misma referencia; arrástrala a su sitio (⌘D)")
+            Spacer()
+            if !region.copies.isEmpty {
+                Text("\(region.copies.count + 1) cajas")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.textSecondary)
+                Button("Quitar copias") { model.update(region.id) { $0.copies = [] } }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11, weight: .medium))
+            }
+        }
     }
 
     @ViewBuilder
@@ -148,8 +190,14 @@ struct RegionInspector: View {
                     model.setRegionReference(url, for: region.id)
                 }
             } label: {
-                Label("Añadir imagen de referencia", systemImage: "photo.badge.plus")
-                    .font(.system(size: 12, weight: .medium))
+                VStack(alignment: .leading, spacing: 2) {
+                    Label("Añadir imagen de referencia", systemImage: "photo.badge.plus")
+                        .font(.system(size: 12, weight: .medium))
+                    Text("o arrástrala aquí desde la tira, o pégala con ⌘V")
+                        .font(.system(size: 10))
+                        .foregroundStyle(Theme.textSecondary)
+                        .padding(.leading, 20)
+                }
             }
             .buttonStyle(.plain)
             .foregroundStyle(Theme.textPrimary)

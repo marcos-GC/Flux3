@@ -90,6 +90,25 @@ final class PreciseEditTests: XCTestCase {
         XCTAssertEqual(prompt, expected)
     }
 
+    /// Una región con copias: una sola instrucción y una sola referencia, una fila por caja.
+    func testDuplicatedBoxesShareInstructionAndReference() {
+        let r = EditRegionSpec(number: 1, kind: .new, target: PixelRect(x: 0, y: 0, width: 100, height: 100),
+                               instruction: "a brass wall sconce", referenceImageIndex: 1,
+                               copies: [PixelRect(x: 450, y: 0, width: 100, height: 100),
+                                        PixelRect(x: 900, y: 0, width: 100, height: 100)])
+        let prompt = PreciseEdit.buildPrompt(globalInstruction: "", regions: [r], imageWidth: 1000, imageHeight: 1000)
+        XCTAssertTrue(prompt.contains(#"Add the same new element in each of the marked areas <region_1> in the upper left, <region_1_2> in the upper middle and <region_1_3> in the upper right, using <ref_image_1> as the reference: "a brass wall sconce"."#))
+        XCTAssertTrue(prompt.contains(#"{"id":"region_1","from":"ref_image_1","src_bbox":[0,0,1000,1000],"tgt_bbox":[0,0,100,100],"desc":"a brass wall sconce"}"#))
+        XCTAssertTrue(prompt.contains(#"{"id":"region_1_2","from":"ref_image_1","src_bbox":[0,0,1000,1000],"tgt_bbox":[0,450,100,550],"desc":"a brass wall sconce"}"#))
+        XCTAssertTrue(prompt.contains(#"{"id":"region_1_3","from":"ref_image_1","src_bbox":[0,0,1000,1000],"tgt_bbox":[0,900,100,1000],"desc":"a brass wall sconce"}"#))
+        XCTAssertFalse(prompt.contains("ref_image_2"))
+
+        let keep = EditRegionSpec(number: 2, kind: .anchor, source: PixelRect(x: 0, y: 900, width: 100, height: 100),
+                                  instruction: "", copies: [PixelRect(x: 900, y: 900, width: 100, height: 100)])
+        let p2 = PreciseEdit.buildPrompt(globalInstruction: "", regions: [keep], imageWidth: 1000, imageHeight: 1000)
+        XCTAssertTrue(p2.contains("Keep the marked areas <region_2> in the lower left and <region_2_2> in the lower right unchanged."))
+    }
+
     func testSmallBoxWarning() {
         XCTAssertTrue(PreciseEdit.isTooSmall(PixelRect(x: 0, y: 0, width: 39, height: 30)))
         XCTAssertTrue(PreciseEdit.isTooSmall(PixelRect(x: 0, y: 0, width: 100, height: 20)))
