@@ -16,8 +16,15 @@ APP="$INSTALL_DIR/$APP_NAME.app"
 VERSION="${VERSION:-0.1.$(git rev-list --count HEAD 2>/dev/null || echo 0)}"
 
 echo "▶︎ Compilando (puede tardar un par de minutos la primera vez)…"
-swift build -c release --product FluxStudio
-BIN="$(swift build -c release --product FluxStudio --show-bin-path)/FluxStudio"
+# Binario universal (Apple Silicon + Intel) para que funcione en cualquier Mac.
+# Si la toolchain no puede, se compila solo para la arquitectura de este Mac.
+if swift build -c release --product FluxStudio --arch arm64 --arch x86_64; then
+    BIN="$(swift build -c release --product FluxStudio --arch arm64 --arch x86_64 --show-bin-path)/FluxStudio"
+else
+    echo "⚠︎ No se pudo compilar la versión universal; compilo solo para este Mac."
+    swift build -c release --product FluxStudio
+    BIN="$(swift build -c release --product FluxStudio --show-bin-path)/FluxStudio"
+fi
 
 echo "▶︎ Montando $APP"
 mkdir -p "$INSTALL_DIR"

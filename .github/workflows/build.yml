@@ -47,10 +47,25 @@ jobs:
           fi
           hdiutil detach "$RUNNER_TEMP/dmg"
 
+      - name: Crear el instalador con icono (.pkg)
+        run: ./make_pkg.sh
+
+      - name: Comprobar el instalador .pkg
+        run: |
+          pkgutil --expand-full "dist/Instalar FLUX Studio.pkg" "$RUNNER_TEMP/pkg"
+          APP="$(find "$RUNNER_TEMP/pkg" -type d -name 'FLUX Studio.app' | head -1)"
+          test -n "$APP"
+          test -f "$APP/Contents/Resources/AppIcon.icns"
+          lipo -archs "$APP/Contents/MacOS/FluxStudio"
+          lipo -archs "$APP/Contents/MacOS/FluxStudio" | grep -q x86_64
+          lipo -archs "$APP/Contents/MacOS/FluxStudio" | grep -q arm64
+
       - uses: actions/upload-artifact@v4
         with:
           name: FLUX-Studio-instalador
-          path: dist/FLUX-Studio.dmg
+          path: |
+            dist/FLUX-Studio.dmg
+            dist/Instalar FLUX Studio.pkg
           retention-days: 30
 
       - name: Publicar la última versión (Releases → «ultima»)
@@ -59,7 +74,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release delete ultima --cleanup-tag --yes || true
-          gh release create ultima dist/FLUX-Studio.dmg \
+          cp "dist/Instalar FLUX Studio.pkg" dist/Instalar-FLUX-Studio.pkg
+          gh release create ultima dist/Instalar-FLUX-Studio.pkg dist/FLUX-Studio.dmg \
             --target "$GITHUB_SHA" \
             --title "FLUX Studio (última versión)" \
-            --notes "Instalador generado automáticamente desde el commit ${GITHUB_SHA::7}. Descarga **FLUX-Studio.dmg**, ábrelo y arrastra FLUX Studio a Aplicaciones."
+            --notes "Instalador generado automáticamente desde el commit ${GITHUB_SHA::7}. Descarga **Instalar-FLUX-Studio.pkg**, ábrelo con doble clic y pulsa Continuar → Instalar. (Alternativa: FLUX-Studio.dmg y arrastrar a Aplicaciones.)"

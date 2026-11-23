@@ -4,7 +4,17 @@ App para Mac (macOS 14 o superior) que usa la API de Black Forest Labs (**FLUX 3
 
 ## Instalar y actualizar
 
-### Opción rápida (recomendada)
+Funciona en cualquier Mac con macOS 14 o superior, con Apple Silicon o con Intel.
+
+### Con instalador (doble clic, recomendada)
+
+1. Descarga **Instalar-FLUX-Studio.pkg**: https://github.com/marcos-GC/Flux3/releases/download/ultima/Instalar-FLUX-Studio.pkg
+2. Haz doble clic sobre él y pulsa **Continuar → Instalar** (pide la contraseña del Mac).
+3. La primera vez, macOS puede decir que no puede abrir el instalador, porque no está firmado con un certificado de pago de Apple. Cierra el aviso, ve a **Ajustes del Sistema → Privacidad y seguridad**, baja hasta el final y pulsa **«Abrir igualmente»**. Solo hace falta con el instalador: la app ya se abre sin avisos.
+
+FLUX Studio queda en **Aplicaciones** y en el **Launchpad**. **Para actualizar, descarga el instalador otra vez y ábrelo**: cierra y sustituye la versión anterior y conserva los ajustes, el historial y la API key.
+
+### Con Terminal (sin avisos)
 
 Abre la app **Terminal**, pega esta línea y pulsa ↩:
 
@@ -12,14 +22,13 @@ Abre la app **Terminal**, pega esta línea y pulsa ↩:
 curl -fsSL https://raw.githubusercontent.com/marcos-GC/Flux3/claude/flux-studio-macos-app-afvdnk/install.sh | bash
 ```
 
-Descarga la última versión, la copia a **Aplicaciones** y la abre, sin el aviso de seguridad de macOS. **Para actualizar, pega la misma línea otra vez.**
+Descarga la última versión, la copia a **Aplicaciones** y la abre. Para actualizar, pega la misma línea otra vez.
 
-### Opción manual (instalador .dmg)
+### Arrastrando (imagen .dmg)
 
 1. Descarga **FLUX-Studio.dmg**: https://github.com/marcos-GC/Flux3/releases/download/ultima/FLUX-Studio.dmg
 2. Ábrelo y arrastra **FLUX Studio** a la carpeta **Aplicaciones**.
-3. La primera vez macOS la bloqueará, porque no está firmada con un certificado de pago de Apple. Para permitirla:
-   **Ajustes del Sistema → Privacidad y seguridad**, baja hasta el final y pulsa **«Abrir igualmente»**.
+3. La primera vez macOS la bloqueará. Para permitirla: **Ajustes del Sistema → Privacidad y seguridad**, baja hasta el final y pulsa **«Abrir igualmente»**.
 
 ## Primeros pasos
 
@@ -163,8 +172,8 @@ Si una clave queda expuesta (por ejemplo, en una captura), bórrala en dashboard
   - `FluxCore`: cliente de la API (`BFLClient`, polling con timeout y cancelación), peticiones `Codable` de cada endpoint, construcción del prompt de Editar con precisión, máscara de Borrar y de Pintar y rellenar (pincel y polígono, borde suavizado y pegado sobre el original), geometría de Outpainting, guardado e historial, y `PromptEnhancer` para Claude Haiku. Todo con tests.
   - `FluxStudio`: interfaz SwiftUI (MVVM sencillo, `async/await`).
 - `swift build` y `swift test` compilan y prueban el proyecto.
-- `./build_app.sh` monta `FLUX Studio.app` en `~/Applications`; `./make_dmg.sh` crea `dist/FLUX-Studio.dmg`.
-- GitHub Actions (`.github/workflows/build.yml`) compila, ejecuta los tests y comprueba que la app del instalador arranca en macOS en cada cambio. Cada cambio en la rama `claude/flux-studio-macos-app-afvdnk` publica además el `.dmg` en la release **ultima**, que es la que descarga `install.sh`.
+- `./build_app.sh` monta `FLUX Studio.app` (universal: Apple Silicon + Intel) en `~/Applications`; `./make_dmg.sh` crea `dist/FLUX-Studio.dmg` y `./make_pkg.sh` crea el instalador `dist/Instalar FLUX Studio.pkg`.
+- GitHub Actions (`.github/workflows/build.yml`) compila, ejecuta los tests y comprueba que la app del instalador arranca en macOS en cada cambio. Cada cambio en la rama `claude/flux-studio-macos-app-afvdnk` publica además el `.pkg` y el `.dmg` en la release **ultima**, que es la que descarga `install.sh`.
 
 ### Comprobación contra la documentación de BFL
 
